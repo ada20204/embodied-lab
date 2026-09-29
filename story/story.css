@@ -198,3 +198,5 @@ input[type=range]{width:100%;accent-color:var(--accent);min-width:0}
 #motionPanel .sl.mt{margin-top:10px;grid-template-columns:3em 1fr 4.6em}
 #motionPanel .led-step.err{color:var(--fail)}
 body.drag-over::after{content:"松开以载入 CSV";position:fixed;inset:12px;z-index:40;display:flex;align-items:center;justify-content:center;border:2px dashed var(--accent);border-radius:16px;background:rgba(14,16,19,.7);color:var(--text);font-size:18px;pointer-events:none}
+
+.mt0{margin-top:6px}

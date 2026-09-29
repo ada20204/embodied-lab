@@ -45,8 +45,11 @@
     <div class="row"><button type="button" id="lightReset" class="mini">恢复默认</button></div>
   </section>
   <section id="motionPanel" class="panel" hidden aria-label="动作库">
-    <header><b>动作库 · G1</b><button type="button" class="x" data-close="motionPanel" aria-label="关闭动作库">×</button></header>
-    <div class="presets" id="clipList" role="group" aria-label="动作片段"></div>
+    <header><b>动作库</b><button type="button" class="x" data-close="motionPanel" aria-label="关闭动作库">×</button></header>
+    <p class="insp-range mt0"><b>G1</b>（开源动捕，播放时下载）</p>
+    <div class="presets" id="clipList" role="group" aria-label="G1 动作片段"></div>
+    <p class="insp-range mt0"><b>小鸭子</b>（策略在仿真里跑出来的轨迹，随页面提供）</p>
+    <div class="presets" id="duckClipList" role="group" aria-label="小鸭子动作片段"></div>
     <div class="row">
       <button type="button" id="mPlay" class="mini" disabled>▶ 播放</button>
       <button type="button" id="mStop" class="mini" hidden>■ 回到讲解</button>
@@ -55,8 +58,9 @@
     </div>
     <div class="sl mt"><label for="mT">进度</label><input id="mT" type="range" min="0" max="1" step="0.1" value="0" disabled><output id="mTv">0 s</output></div>
     <p class="led-step" id="mStatus" aria-live="polite">选一个片段。数据会在这时从源站下载（约 1–2 MB）。</p>
-    <div class="row"><label class="mini">选择 CSV 文件<input type="file" id="mFile" accept=".csv,text/csv" hidden></label><span class="insp-range">也可以把 CSV 拖进页面。只支持 G1 的 36 列格式。</span></div>
-    <p class="insp-range">动作来自 Unitree 重定向的 LAFAN1 数据集（G1，30 FPS）。原始动捕是 Ubisoft 的 LAFAN1（CC BY-NC-ND 4.0），本页<b>不内置也不再分发</b>数据，只在播放时下载。重定向只考虑了运动学，真机不一定做得到。
+    <div class="row"><label class="mini">选择 CSV 文件<input type="file" id="mFile" accept=".csv,text/csv" hidden></label><span class="insp-range">CSV 只对 G1 有效（36 列），也可以拖进页面。</span></div>
+    <p class="insp-range">小鸭子的片段是我在 MuJoCo 里运行 Pollen Robotics 公开的强化学习策略（ONNX）录下的关节轨迹，不是真机数据；页面里的实际速度比指令慢（约 0.1 m/s），原因还没查清。模型文件为 CC BY-NC-SA，仅限非商业。</p>
+    <p class="insp-range">G1 动作来自 Unitree 重定向的 LAFAN1 数据集（G1，30 FPS）。原始动捕是 Ubisoft 的 LAFAN1（CC BY-NC-ND 4.0），本页<b>不内置也不再分发</b>数据，只在播放时下载。重定向只考虑了运动学，真机不一定做得到。
       <a href="https://huggingface.co/datasets/lvhaidong/LAFAN1_Retargeting_Dataset" rel="noopener">数据集</a> · <a href="https://github.com/ubisoft/ubisoft-laforge-animation-dataset" rel="noopener">LAFAN1</a></p>
   </section>
   <section id="ledPanel" class="panel" hidden aria-label="头部指示灯">
@@ -198,9 +202,9 @@
       <h2>一只用强化学习走路的小鸭子</h2>
       <p>Microduck 是 Pollen Robotics 和 Hugging Face 的开源双足机器人，约 25 cm、800 g。它板上的 Rockchip RK3566 以 50 Hz 跑神经网络策略，驱动 15 个舵机。</p>
       <p>屏幕上是它走路版的关节模型（14 个关节）：<b>拖动旋转，点任意部件，再用滑块摆关节</b>。</p>
-      <p class="meta"><em class="b b-demo">示意</em> 头部的小动作是我手工做的，<b>不是它的强化学习策略</b>；页面里没有物理仿真。</p>
+      <p class="meta"><em class="b b-demo">示意</em> 这里的头部小动作是我手工做的，<b>不是策略输出</b>。点右上角“动作库”，可以播放策略在仿真里跑出来的行走、踢球、翻滚等轨迹；页面本身没有物理仿真，播放的是事先录好的关节轨迹。</p>
       <div class="credit">
-        <b>模型来源</b> · <a href="https://github.com/pollen-robotics/microduck_rl" rel="noopener">pollen-robotics/microduck_rl</a>（Apache-2.0，已抽稀）
+        <b>模型来源</b> · <a href="https://github.com/pollen-robotics/microduck_rl" rel="noopener">pollen-robotics/microduck_rl</a>（代码 Apache-2.0，<b>3D 模型 CC BY-NC-SA，仅限非商业</b>；已抽稀）
         <p class="mine">机器人和策略都出自 Pollen Robotics。我读了它的训练栈，笔记在这里：<a href="../index.html#/notes/01-microduck-rl">Microduck 的强化学习训练栈</a>。</p>
       </div>
     </div>
@@ -248,7 +252,7 @@
       <p>用 Nova 挂 Pocket 3 拍产品，能在浏览器里设计运镜，逐帧检查干涉、限位、速度、加速度和奇异，并自动修正。</p>
       <p class="meta"><em class="b b-sim">仿真</em> 近似参数，尚未上真机。</p>
       <p class="cta"><a class="btn" href="../previz/">打开预演台</a> <a class="btn ghost" href="../index.html">读笔记</a></p>
-      <p class="fine">本页与 Claude（Anthropic）协作完成。宇树（Unitree）、越疆（Dobot）、DJI 等名称归各自所有者，与本页无关。G1 模型来自 MuJoCo Menagerie（BSD-3-Clause，© Unitree Robotics），已抽稀，见 <a href="../assets/g1/NOTICE.md">NOTICE</a>。Microduck 模型来自 Pollen Robotics 的 microduck_rl（Apache-2.0），已抽稀，见 <a href="../assets/duck/NOTICE.md">NOTICE</a>。</p>
+      <p class="fine">本页与 Claude（Anthropic）协作完成。宇树（Unitree）、越疆（Dobot）、DJI 等名称归各自所有者，与本页无关。G1 模型来自 MuJoCo Menagerie（BSD-3-Clause，© Unitree Robotics），已抽稀，见 <a href="../assets/g1/NOTICE.md">NOTICE</a>。Microduck 模型来自 Pollen Robotics 的 microduck_rl（3D 网格为 CC BY-NC-SA，仅限非商业使用；代码 Apache-2.0），已抽稀，见 <a href="../assets/duck/NOTICE.md">NOTICE</a>。</p>
     </div>
   </div>
 </section>

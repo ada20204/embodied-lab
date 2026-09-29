@@ -43,7 +43,31 @@
         if (c < 7) rootv[r * 7 + c] = v; else q[r * NJ + c - 7] = v;
       }
     }
-    return { fps: FPS, n, root: rootv, q };
+    return { fps: FPS, n, nj: NJ, joints: JOINTS, root: rootv, q };
+  }
+
+  /** 小鸭子的片段：assets/duck/motions/*.json，frames 是 n 行，每行 7+nj 个数（根 xyz + 四元数 xyzw + 关节角），50 FPS */
+  const DUCK_CLIPS = [
+    { id: 'walk_forward', cat: '行走', name: '前进走' },
+    { id: 'walk_curve', cat: '行走', name: '边走边转' },
+    { id: 'sit_stand', cat: '技能', name: '坐下站起' },
+    { id: 'kick_left', cat: '技能', name: '左脚踢' },
+    { id: 'kick_right', cat: '技能', name: '右脚踢' },
+    { id: 'roll', cat: '技能', name: '翻滚' },
+    { id: 'ground_pick', cat: '技能', name: '低头抓地' },
+  ];
+  function fromJson(d) {
+    if (!d || !Array.isArray(d.joints) || !Array.isArray(d.frames) || !(d.fps > 0)) throw new Error('片段格式不对：需要 fps、joints、frames');
+    const nj = d.joints.length, cols = 7 + nj, n = d.frames.length;
+    if (n < 2) throw new Error('至少要有 2 帧');
+    for (let r = 0; r < n; r++) if (!Array.isArray(d.frames[r]) || d.frames[r].length !== cols) throw new Error(`第 ${r + 1} 帧应有 ${cols} 个数`);
+    const rootv = new Float32Array(n * 7), q = new Float32Array(n * nj);
+    for (let r = 0; r < n; r++) for (let c = 0; c < cols; c++) {
+      const v = +d.frames[r][c];
+      if (!Number.isFinite(v)) throw new Error(`第 ${r + 1} 帧第 ${c + 1} 个数不是数字`);
+      if (c < 7) rootv[r * 7 + c] = v; else q[r * nj + c - 7] = v;
+    }
+    return { fps: d.fps, n, nj, joints: d.joints.slice(), root: rootv, q };
   }
 
   const duration = clip => (clip.n - 1) / clip.fps;
@@ -57,15 +81,15 @@
     const sg = dot < 0 ? -1 : 1; let l = 0;
     for (let k = 0; k < 4; k++) { const v = R[ri + 3 + k] + (sg * R[rj + 3 + k] - R[ri + 3 + k]) * a; out.quat[k] = v; l += v * v; }
     l = Math.sqrt(l) || 1; for (let k = 0; k < 4; k++) out.quat[k] /= l;
-    const Q = clip.q, qi = i * NJ, qj = j * NJ;
-    for (let k = 0; k < NJ; k++) out.q[k] = Q[qi + k] + (Q[qj + k] - Q[qi + k]) * a;
+    const nj = clip.nj || NJ, Q = clip.q, qi = i * nj, qj = j * nj;
+    for (let k = 0; k < nj; k++) out.q[k] = Q[qi + k] + (Q[qj + k] - Q[qi + k]) * a;
     return out;
   }
-  const makeOut = () => ({ pos: [0, 0, 0], quat: [0, 0, 0, 1], q: new Float32Array(NJ) });
+  const makeOut = () => ({ pos: [0, 0, 0], quat: [0, 0, 0, 1], q: new Float32Array(64) });
   /** 关节数组 → { 关节名: 弧度 } */
-  function toPose(q, into) { const o = into || {}; for (let k = 0; k < NJ; k++) o[JOINTS[k]] = q[k]; return o; }
+  function toPose(q, into, joints) { const o = into || {}, J = joints || JOINTS; for (let k = 0; k < J.length; k++) o[J[k]] = q[k]; return o; }
 
-  const api = { JOINTS, CLIPS, FPS, COLS, parseCsv, duration, sample, makeOut, toPose };
+  const api = { JOINTS, CLIPS, DUCK_CLIPS, fromJson, FPS, COLS, parseCsv, duration, sample, makeOut, toPose };
   root.G1Motion = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

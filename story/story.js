@@ -388,8 +388,8 @@
     const b = ['https://huggingface.co/datasets/lvhaidong/LAFAN1_Retargeting_Dataset/resolve/main/g1/', 'https://raw.githubusercontent.com/plusultra-maker/lafan-g1/main/g1/'];
     return q ? [q.endsWith('/') ? q : q + '/'].concat(b) : b;
   })();
-  const mot = { clip: null, name: '', t: 0, playing: false, speed: 1, follow: true, out: G1Motion.makeOut(), pose: {}, root0: null, loading: null, lastUi: 0 };
-  const mUI = { list: $('#clipList'), play: $('#mPlay'), stop: $('#mStop'), follow: $('#mFollow'), speed: $('#mSpeed'), t: $('#mT'), tv: $('#mTv'), status: $('#mStatus'), file: $('#mFile') };
+  const mot = { model: 'g1', clip: null, name: '', t: 0, playing: false, speed: 1, follow: true, out: G1Motion.makeOut(), pose: {}, root0: null, loading: null, lastUi: 0 };
+  const mUI = { list: $('#clipList'), dlist: $('#duckClipList'), play: $('#mPlay'), stop: $('#mStop'), follow: $('#mFollow'), speed: $('#mSpeed'), t: $('#mT'), tv: $('#mTv'), status: $('#mStatus'), file: $('#mFile') };
   const setMStatus = (msg, err) => { mUI.status.textContent = msg; mUI.status.classList.toggle('err', !!err); };
   const fmtT = x => `${x.toFixed(1)} s`;
 
@@ -398,23 +398,34 @@
     mUI.play.disabled = !has; mUI.t.disabled = !has; mUI.stop.hidden = !has;
     mUI.play.textContent = mot.playing ? '⏸ 暂停' : '▶ 播放';
     if (has) { mUI.t.max = G1Motion.duration(mot.clip).toFixed(1); mUI.t.value = mot.t.toFixed(1); mUI.tv.textContent = fmtT(mot.t); }
-    $$('#clipList button').forEach(b => b.setAttribute('aria-pressed', String(has && b.dataset.id === mot.name)));
+    $$('#clipList button').forEach(b => b.setAttribute('aria-pressed', String(has && mot.model === 'g1' && b.dataset.id === mot.name)));
+    $$('#duckClipList button').forEach(b => b.setAttribute('aria-pressed', String(has && mot.model === 'duck' && b.dataset.id === mot.name)));
   }
-  function startMotion(clip, name, srcText) {
-    if (!g1) { setMStatus('G1 模型还没加载好。', true); return; }
-    if (!mot.root0) mot.root0 = new Float32Array(g1.root.base);
+  const motModel = () => mot.model === 'duck' ? duck : g1;
+  function startMotion(clip, name, srcText, model) {
+    model = model || 'g1';
+    const mm = model === 'duck' ? duck : g1;
+    if (!mm) { setMStatus('模型还没加载好。', true); return; }
+    if (mot.clip && mot.model !== model) { const old = motModel(); if (old && mot.root0) old.root.base = new Float32Array(mot.root0); mot.root0 = null; }
+    mot.model = model;
+    if (!mot.root0) mot.root0 = new Float32Array(mm.root.base);
     mot.clip = clip; mot.name = name; mot.t = 0; mot.playing = true; syncMotionUI();
-    const cl = G1Motion.CLIPS.find(c => c.id === name);
+    const cl = (model === 'duck' ? G1Motion.DUCK_CLIPS : G1Motion.CLIPS).find(c => c.id === name);
     setMStatus(`${cl ? cl.name : name} · ${clip.n} 帧 · ${fmtT(G1Motion.duration(clip))} · ${srcText}`);
-    hudGest.textContent = '动作库'; hudAct.textContent = 'LAFAN1 重定向'; hudSay.textContent = `播放：${cl ? cl.name : name}。这是开源动捕数据重定向到 G1 的关节轨迹。`;
-    if (CHAPTERS[S.ch].main !== 'g1') { const c2 = $('#c2'); if (c2) c2.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); }
+    hudGest.textContent = '动作库';
+    if (model === 'duck') { hudAct.textContent = '策略仿真轨迹'; hudSay.textContent = `播放：${cl ? cl.name : name}。这是 Pollen 公开的强化学习策略在 MuJoCo 里跑出来的关节轨迹。`; }
+    else { hudAct.textContent = 'LAFAN1 重定向'; hudSay.textContent = `播放：${cl ? cl.name : name}。这是开源动捕数据重定向到 G1 的关节轨迹。`; }
+    const want = model === 'duck' ? 'duck' : 'g1';
+    if (CHAPTERS[S.ch].main !== want) { const c2 = $(model === 'duck' ? '#c3' : '#c2'); if (c2) c2.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); }
     hideHint();
     if (mobile()) { $('#motionPanel').hidden = true; $('#motionBtn').setAttribute('aria-expanded', 'false'); }   // 手机上让出画面
   }
   function stopMotion() {
     if (!mot.clip) return;
+    const mm = motModel();
     mot.clip = null; mot.name = ''; mot.playing = false;
-    if (g1 && mot.root0) g1.root.base = new Float32Array(mot.root0);
+    if (mm && mot.root0) mm.root.base = new Float32Array(mot.root0);
+    mot.root0 = null; mot.model = 'g1';
     syncMotionUI(); setMStatus('已回到讲解。可以再选一个片段。');
     setGesture(S.beat ? (S.beat.dataset.gesture || 'idle') : 'idle', S.beat ? (S.beat.dataset.say || '') : '');
   }
@@ -443,6 +454,19 @@
       setMStatus(parse ? e.message : '下载失败（网络不通，或这个页面不允许访问外部站点）。可以从数据集下载 CSV，再点“选择 CSV 文件”或拖进页面。', true);
     } finally { if (mot.loading === id) mot.loading = null; if (btn) btn.removeAttribute('aria-busy'); }
   }
+  async function selectDuckClip(id) {
+    if (mot.loading === 'd:' + id) return;
+    mot.loading = 'd:' + id; const btn = $(`#duckClipList button[data-id="${id}"]`); if (btn) btn.setAttribute('aria-busy', 'true');
+    setMStatus('读取中……');
+    try {
+      const r = await fetch(`../assets/duck/motions/${id}.json`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const clip = G1Motion.fromJson(await r.json());
+      if (mot.loading !== 'd:' + id) return;
+      startMotion(clip, id, '仿真录制 · 50 FPS', 'duck');
+    } catch (e) { setMStatus('读取失败：' + e.message, true); }
+    finally { if (mot.loading === 'd:' + id) mot.loading = null; if (btn) btn.removeAttribute('aria-busy'); }
+  }
   async function loadFile(file) {
     try { startMotion(G1Motion.parseCsv(await file.text()), file.name.replace(/\.csv$/i, ''), '本地文件'); }
     catch (e) { setMStatus(e.message, true); openPanel('motionPanel'); }
@@ -452,6 +476,11 @@
       const b = document.createElement('button'); b.type = 'button'; b.dataset.id = c.id; b.setAttribute('aria-pressed', 'false');
       b.append(c.name); const sm = document.createElement('small'); sm.textContent = c.cat; b.appendChild(sm);
       b.addEventListener('click', () => selectClip(c.id)); mUI.list.appendChild(b);
+    });
+    G1Motion.DUCK_CLIPS.forEach(c => {
+      const b = document.createElement('button'); b.type = 'button'; b.dataset.id = c.id; b.setAttribute('aria-pressed', 'false');
+      b.append(c.name); const sm = document.createElement('small'); sm.textContent = c.cat; b.appendChild(sm);
+      b.addEventListener('click', () => selectDuckClip(c.id)); mUI.dlist.appendChild(b);
     });
     mUI.play.addEventListener('click', () => { if (!mot.clip) return; mot.playing = !mot.playing; syncMotionUI(); });
     mUI.stop.addEventListener('click', stopMotion);
@@ -469,14 +498,15 @@
   }
   /** 每帧：推进时间、把根节点位姿和关节角写到 G1；返回镜头跟随的偏移 */
   function updateMotion(dt) {
-    if (!mot.clip || !g1) return null;
+    const mm = motModel();
+    if (!mot.clip || !mm) return null;
     const dur = G1Motion.duration(mot.clip);
     if (mot.playing) { mot.t += dt * mot.speed; if (mot.t > dur) mot.t = 0; }
     G1Motion.sample(mot.clip, mot.t, mot.out);
-    g1.root.base = Stage3D.M4.fromQT(mot.out.quat, mot.out.pos);
-    G1Motion.toPose(mot.out.q, mot.pose);
-    Object.assign(cur, mot.pose);     // 结束后讲解手势从当前姿态接着走
-    g1.set(Object.assign({}, mot.pose, manual));
+    mm.root.base = Stage3D.M4.fromQT(mot.out.quat, mot.out.pos);
+    G1Motion.toPose(mot.out.q, mot.pose, mot.clip.joints);
+    if (mot.model === 'g1') Object.assign(cur, mot.pose);     // 结束后讲解手势从当前姿态接着走
+    mm.set(Object.assign({}, mot.pose, manual));
     const now = performance.now();
     if (now - mot.lastUi > 150) { mot.lastUi = now; if (document.activeElement !== mUI.t) { mUI.t.value = mot.t.toFixed(1); } mUI.tv.textContent = fmtT(mot.t); }
     return mot.follow ? [mot.out.pos[0], mot.out.pos[1]] : [0, 0];
@@ -504,19 +534,19 @@
     if (!(drag && drag.moved)) { orbit.az += (orbit.taz - orbit.az) * kO; orbit.el += (orbit.tel - orbit.el) * kO; }
     orbit.zoom += (orbit.tzoom - orbit.zoom) * kO;
     cam.az += orbit.az; cam.el = clamp(cam.el + orbit.el, -0.12, 1.3); cam.dist *= orbit.zoom;
-    if (mfx && chc.main === 'g1') cam.target = [cam.target[0] + fx, cam.target[1] + fy, cam.target[2]];   // 不改共享的镜头常量
+    if (mfx && chc.main === mot.model) cam.target = [cam.target[0] + fx, cam.target[1] + fy, cam.target[2]];   // 不改共享的镜头常量
     Object.assign(st.camera, cam);
 
     // 讲解员
     if (override && performance.now() > override.until) override = null;
-    if (g1 && !mot.clip) {
+    if (g1 && !(mot.clip && mot.model === 'g1')) {
       const target = G1Poses.poseFor(override ? override.id : gesture, reduce ? 0 : t);
       if (!reduce) target.waist_pitch_joint = 0.025 * Math.sin(t * 1.3);
       G1Poses.approach(cur, target, dt, 5.5);
       g1.set(Object.assign({}, cur, manual));
     }
     if (nova) nova.set(Object.assign(novaPose(S.p + S.ch * 0.3, t), manual));
-    if (duck) duck.set(Object.assign(reduce ? {} : duckPose(S.p, t), manual));
+    if (duck && !(mot.clip && mot.model === 'duck')) duck.set(Object.assign(reduce ? {} : duckPose(S.p, t), manual));
 
     // 哪些模型在主视口
     const wantNova = chc.main === 'nova' && nova, wantG1 = chc.main === 'g1' && g1, wantDuck = chc.main === 'duck' && duck;
@@ -525,13 +555,14 @@
     if (wantG1) roots.push(g1.root);
     if (wantDuck) roots.push(duck.root);
     st.shadows.length = 0;
-    if (wantDuck) st.shadows.push({ c: [0, 0], r: 0.13 });
-    if (wantG1) st.shadows.push({ c: [fx, fy], r: 0.55 });
+    const gx = mot.model === 'g1' ? fx : 0, gy = mot.model === 'g1' ? fy : 0, dx = mot.model === 'duck' ? fx : 0, dy = mot.model === 'duck' ? fy : 0;
+    if (wantDuck) st.shadows.push({ c: [dx, dy], r: 0.13 });
+    if (wantG1) st.shadows.push({ c: [gx, gy], r: 0.55 });
     if (wantNova) st.shadows.push({ c: [0, 0], r: 0.95 });
     curRoots = roots; curPip = !!(chc.pip && g1 && innerWidth >= (chc.pipMinW || 0));
     const glow = updateLed(performance.now()) || undefined;
-    curPipCam = (fx || fy) ? Object.assign({}, PIP_CAM, { target: [PIP_CAM.target[0] + fx, PIP_CAM.target[1] + fy, PIP_CAM.target[2]] }) : PIP_CAM;
-    st.render({ roots, glow: wantG1 ? glow : undefined, gridCenter: wantG1 ? [fx, fy] : undefined });
+    curPipCam = (gx || gy) ? Object.assign({}, PIP_CAM, { target: [PIP_CAM.target[0] + gx, PIP_CAM.target[1] + gy, PIP_CAM.target[2]] }) : PIP_CAM;
+    st.render({ roots, glow: wantG1 ? glow : undefined, gridCenter: (wantG1 || wantDuck) ? [wantG1 ? gx : dx, wantG1 ? gy : dy] : undefined });
     if (sel && now - inspT > 200) { inspT = now; syncSlider(false); }
     if (chc.pip && g1 && innerWidth >= (chc.pipMinW || 0)) st.render({ roots: [g1.root], camera: curPipCam, viewport: pipRect(), clearColor: false, grid: false, glow });
   }
@@ -548,7 +579,7 @@
       $$('.dots a').forEach(a => a.classList.toggle('on', +a.dataset.go === S.ch));
       if (S.beat && S.beat !== lastBeat) {
         lastBeat = S.beat;
-        if (!override && !mot.clip) setGesture(S.beat.dataset.gesture || 'idle', S.beat.dataset.say || '');
+        if (!override && !(mot.clip && mot.model === 'g1')) setGesture(S.beat.dataset.gesture || 'idle', S.beat.dataset.say || '');
       }
     });
   }
@@ -589,5 +620,5 @@
   requestAnimationFrame(frame);
 
   // 供本地测试使用
-  window.__story = { mot, selectClip, get state() { return { motion: mot.clip ? { name: mot.name, t: +mot.t.toFixed(2), n: mot.clip.n, playing: mot.playing } : null, ch: S.ch, p: S.p, gesture, nova: !!nova, g1: !!g1, duck: !!duck, sel: sel && { model: sel.model, name: sel.name, label: sel.label }, manual: Object.assign({}, manual), light: st && Object.assign({}, st.light), orbit: Object.assign({}, orbit) }; }, MATRIX, pickAt, select, led, setLed, orbit };
+  window.__story = { mot, selectClip, selectDuckClip, get state() { return { motion: mot.clip ? { name: mot.name, t: +mot.t.toFixed(2), n: mot.clip.n, playing: mot.playing } : null, ch: S.ch, p: S.p, gesture, nova: !!nova, g1: !!g1, duck: !!duck, sel: sel && { model: sel.model, name: sel.name, label: sel.label }, manual: Object.assign({}, manual), light: st && Object.assign({}, st.light), orbit: Object.assign({}, orbit) }; }, MATRIX, pickAt, select, led, setLed, orbit };
 })();

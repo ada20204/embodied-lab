@@ -36,4 +36,6 @@ test('来源与许可文件在位', () => {
   assert.match(fs.readFileSync(new URL('../assets/duck/LICENSE', import.meta.url), 'utf8'), /Apache License/);
   assert.match(fs.readFileSync(new URL('../assets/duck/NOTICE.md', import.meta.url), 'utf8'), /Pollen Robotics/);
   assert.match(spec.source, /Apache-2\.0/);
+  assert.match(spec.source, /CC BY-NC-SA/);
+  assert.match(fs.readFileSync(new URL('../assets/duck/NOTICE.md', import.meta.url), 'utf8'), /CC BY-NC-SA/);
 });
