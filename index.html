@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Embodied Lab 具身实验记录</title>
+<meta name="description" content="从 Microduck 的强化学习、Pocket 3 的 AI 身体，到越疆 Nova 的影视运镜预演：一组具身智能实验的笔记与可交互工具。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  color-scheme: dark;
+  --bg:#131519; --panel:#1b1e23; --panel2:#22262c; --line:#2e333a;
+  --text:#e8e5df; --muted:#9aa0a8; --dim:#5d636b;
+  --accent:#f2b45a; --accent-ink:#1b1408; --ok:#4fb286; --err:#e5484d;
+  --display:"Barlow Condensed","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  --body:-apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei","Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);font-size:15px;line-height:1.65}
+[hidden]{display:none!important}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px}
+
+.top{border-bottom:1px solid var(--line);background:var(--panel)}
+.top .wrap{display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap;padding-block:12px}
+.logo{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:.04em;color:var(--text);text-decoration:none}
+.logo span{color:var(--muted);font-weight:500;margin-left:8px;font-size:15px;letter-spacing:.02em}
+.nav{margin-left:auto;display:flex;gap:18px;font-size:14px}
+.nav a{color:var(--muted);text-decoration:none}.nav a:hover{color:var(--text)}
+
+.hero{padding-block:56px 40px;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:40px;align-items:center}
+.eyebrow{font-family:var(--display);font-size:14px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+.hero h1{font-family:var(--display);font-weight:700;font-size:clamp(34px,5.4vw,58px);line-height:1.05;margin:0 0 18px;letter-spacing:.01em;text-wrap:balance}
+.hero p{color:var(--muted);max-width:36em;margin:0 0 24px}
+.cta{display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:4px;border:1px solid var(--line);background:var(--panel2);color:var(--text);text-decoration:none;font-size:14px;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+
+/* 场记板式数据面板 */
+.slate{border:1px solid var(--line);background:var(--panel);border-radius:4px;overflow:hidden}
+.slate-bar{height:14px;background:repeating-linear-gradient(135deg,#e8e5df 0 14px,#131519 14px 28px)}
+.slate-grid{display:grid;grid-template-columns:1fr 1fr}
+.cell{padding:14px 16px;border-top:1px solid var(--line)}
+.cell:nth-child(odd){border-right:1px solid var(--line)}
+.cell b{display:block;font-family:var(--display);font-weight:600;font-size:30px;line-height:1.1;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.cell b em{font-style:normal;color:var(--accent)}
+.cell span{font-size:12.5px;color:var(--muted)}
+
+section.block{padding-block:36px;border-top:1px solid var(--line)}
+.block h2{font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 20px}
+
+/* 演进路线 */
+.timeline{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.timeline li{display:grid;grid-template-columns:56px minmax(0,1fr);gap:16px;padding:16px 0;border-top:1px dashed var(--line)}
+.timeline li:first-child{border-top:0}
+.tnum{font-family:var(--display);font-weight:700;font-size:28px;color:var(--dim);line-height:1}
+.timeline h3{margin:0 0 4px;font-size:17px}
+.timeline p{margin:0;color:var(--muted);max-width:62em}
+.timeline a{font-size:13px;text-decoration:none;white-space:nowrap}
+
+/* 笔记卡片 */
+.notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.note-card{display:flex;flex-direction:column;gap:6px;padding:16px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--text);text-decoration:none}
+.note-card:hover{border-color:var(--muted)}
+.note-card small{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.note-card strong{font-size:16px}
+.note-card span{font-size:13px;color:var(--muted)}
+
+.hw{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.hw div{padding:14px 16px;border-left:2px solid var(--accent);background:var(--panel)}
+.hw b{display:block;margin-bottom:2px}.hw span{font-size:13px;color:var(--muted)}
+
+footer{border-top:1px solid var(--line);padding-block:28px 40px;color:var(--dim);font-size:13px}
+footer p{margin:0 0 6px;max-width:70em}
+
+/* 阅读器 */
+.reader{padding-block:28px 60px}
+.reader .back{margin-bottom:18px}
+.md{max-width:760px}
+.md h1{font-family:var(--display);font-weight:700;font-size:36px;line-height:1.15;margin:0 0 20px;text-wrap:balance}
+.md h2{font-size:20px;margin:34px 0 10px;padding-top:6px;border-top:1px solid var(--line)}
+.md h3{font-size:16px;margin:24px 0 8px}
+.md p,.md li{color:#d6d3cd}
+.md code{font-family:var(--mono);font-size:.88em;background:var(--panel2);padding:1px 5px;border-radius:3px}
+.md pre{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:14px;overflow-x:auto}
+.md pre code{background:none;padding:0}
+.md .tbl{overflow-x:auto;margin:14px 0}
+.md table{border-collapse:collapse;font-size:14px;min-width:100%}
+.md th,.md td{border-bottom:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+.md th{color:var(--muted);font-weight:600;font-size:13px}
+.md blockquote{margin:14px 0;padding:4px 14px;border-left:2px solid var(--accent);color:var(--muted)}
+.pager{display:flex;justify-content:space-between;gap:12px;margin-top:40px;flex-wrap:wrap;max-width:760px}
+.err{color:var(--err)}
+
+@media (max-width:860px){
+  .hero{grid-template-columns:minmax(0,1fr);padding-block:36px 28px}
+  .notes,.hw{grid-template-columns:minmax(0,1fr)}
+  .nav{margin-left:0}
+}
+@media (prefers-reduced-motion:no-preference){.note-card,.btn{transition:border-color .15s}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="logo" href="#">Embodied Lab<span>具身实验记录</span></a>
+  <nav class="nav"><a href="previz/">运镜预演台</a><a href="#notes">笔记</a><a href="#roadmap">下一步</a><a id="repoLink" href="#">GitHub</a></nav>
+</div></header>
+
+<main id="home">
+  <div class="wrap hero">
+    <div>
+      <p class="eyebrow">Nova · Pocket 3 · MuJoCo</p>
+      <h1>从一只机器鸭，<br>到一台会运镜的机械臂</h1>
+      <p>这里记录一组具身智能实验：读 Microduck 的强化学习训练栈，研究怎么让 Pocket 3 当 AI 的身体，比较机械臂的几条学习路线，最后落到用越疆 Nova 挂 Pocket 3 做影视运动控制。主要产出是一个能在浏览器里直接用的运镜预演台。</p>
+      <div class="cta">
+        <a class="btn primary" href="previz/">打开运镜预演台 →</a>
+        <a class="btn" href="#/notes/05-previz-devlog">看开发记录</a>
+      </div>
+    </div>
+    <div class="slate" aria-label="关键数据">
+      <div class="slate-bar"></div>
+      <div class="slate-grid">
+        <div class="cell"><b>461° → <em>42°</em></b><span>云台分担后，微俯环绕的手腕总行程</span></div>
+        <div class="cell"><b>82 → <em>7</em>°/s</b><span>同一镜头的腕部峰值速度</span></div>
+        <div class="cell"><b>7 项</b><span>逐帧检查：不可达、干涉、限位、超速、超加速、起停冲击、奇异</span></div>
+        <div class="cell"><b>3 种</b><span>Pocket 3 挂法，自动修正会在需要时切换</span></div>
+      </div>
+    </div>
+  </div>
+
+  <section class="block" id="evolution"><div class="wrap">
+    <h2>想法是怎么演进的</h2>
+    <ol class="timeline">
+      <li><div class="tnum">01</div><div><h3>Microduck 与强化学习</h3><p>拆解 mjlab + PPO 训练栈、执行器建模和奖励设计。收获：执行器模型决定了大部分 sim2real 差距，奖励要写成硬性规则。<a href="#/notes/01-microduck-rl">笔记 →</a></p></div></li>
+      <li><div class="tnum">02</div><div><h3>Pocket 3 当 AI 的身体</h3><p>结论是不需要 RL，靠程序化动画；找到蓝牙逆向项目和可动 3D 模型，估算视觉闭环 10–30 Hz。<a href="#/notes/02-pocket3-ai-body">笔记 →</a></p></div></li>
+      <li><div class="tnum">03</div><div><h3>机械臂怎么学技能</h3><p>比较 ACT、VLA、π、agentic、RL；梳理越疆 Nova 的 SDK（29999 / 30004 / ServoJ）怎么接进 LeRobot。<a href="#/notes/03-arm-learning">笔记 →</a></p></div></li>
+      <li><div class="tnum">04</div><div><h3>转向影视运动控制</h3><p>Blender 预演 → 逆解与检查 → ServoJ 执行；数字孪生；Claude 用镜头语法当摄影指导。<a href="#/notes/04-motion-control">笔记 →</a></p></div></li>
+      <li><div class="tnum">05</div><div><h3>运镜预演台 v1 → v4</h3><p>从"会撞"到重做碰撞和逆解分支、加动作从容度检查，再到真实尺寸的 Pocket 3、三种挂法和云台分担。<a href="#/notes/05-previz-devlog">笔记 →</a></p></div></li>
+      <li><div class="tnum">06</div><div><h3>下一步</h3><p>计算核心迁到 MuJoCo + mink，做 Blender 插件，真机实测；扩展到双臂和宇树 G1。<a href="#/notes/06-roadmap">笔记 →</a></p></div></li>
+    </ol>
+  </div></section>
+
+  <section class="block" id="notes"><div class="wrap">
+    <h2>笔记</h2>
+    <div class="notes" id="noteCards"></div>
+  </div></section>
+
+  <section class="block" id="roadmap"><div class="wrap">
+    <h2>手上的硬件</h2>
+    <div class="hw">
+      <div><b>越疆 Nova</b><span>影视运镜臂；之后在 LeRobot 上做 ACT 模仿学习</span></div>
+      <div><b>DJI Osmo Pocket 3</b><span>末端相机；AI 身体原型，蓝牙控制云台</span></div>
+      <div><b>宇树 G1</b><span>人形机器人：RL 运动控制、遥操作与模仿学习</span></div>
+    </div>
+  </div></section>
+</main>
+
+<main id="reader" class="wrap reader" hidden>
+  <a class="btn back" href="#">← 返回主页</a>
+  <article class="md" id="md"></article>
+  <nav class="pager" id="pager"></nav>
+</main>
+
+<footer><div class="wrap">
+  <p>运镜预演台是<b>仿真预演</b>：Nova 用近似 DH 参数，Pocket 3 是按公开外形尺寸建的近似模型，云台限位和速度是保守估计。真机数据会在实测后补上。</p>
+  <p>本项目与 Claude（Anthropic）协作完成。文中提到的产品名称归各自所有者，本项目与这些公司无关。</p>
+</div></footer>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script>
+(function(){
+'use strict';
+const NOTES=[
+  ['01-microduck-rl','Microduck 的强化学习训练栈','mjlab + PPO、执行器建模、奖励设计经验'],
+  ['02-pocket3-ai-body','Pocket 3 作为 AI 的身体','程序化动画、蓝牙控制、实时性估算'],
+  ['03-arm-learning','机械臂怎么学技能','ACT / VLA / π / agentic / RL，Nova 接 LeRobot'],
+  ['04-motion-control','影视运动控制：系统架构','工作流、数字孪生、AI 摄影指导、MuJoCo'],
+  ['05-previz-devlog','运镜预演台开发记录','v1 → v4 的问题、修复和数据'],
+  ['06-roadmap','下一步','近期、中期、双臂与 G1、作品集缺口']
+];
+const $=id=>document.getElementById(id);
+$('noteCards').innerHTML=NOTES.map(([id,t,d],i)=>`<a class="note-card" href="#/notes/${id}"><small>${String(i+1).padStart(2,'0')}</small><strong>${t}</strong><span>${d}</span></a>`).join('');
+
+// GitHub 链接：Pages 地址 user.github.io/repo → github.com/user/repo
+(function(){const h=location.hostname,m=h.match(/^([^.]+)\.github\.io$/),seg=location.pathname.split('/').filter(Boolean)[0];
+  const a=$('repoLink');if(m&&seg)a.href=`https://github.com/${m[1]}/${seg}`;else a.hidden=true;})();
+
+const base=new URL('.',location.href.split('#')[0]);
+const cache={};
+async function openNote(id){
+  const i=NOTES.findIndex(n=>n[0]===id);
+  $('home').hidden=true;$('reader').hidden=false;window.scrollTo(0,0);
+  const md=$('md');md.innerHTML='<p>加载中…</p>';
+  try{
+    if(!cache[id]){const r=await fetch(new URL(`notes/${id}.md`,base));if(!r.ok)throw new Error(r.status);cache[id]=await r.text();}
+    md.innerHTML=window.marked?marked.parse(cache[id]):`<pre>${cache[id].replace(/[&<]/g,c=>c==='&'?'&amp;':'&lt;')}</pre>`;
+    md.querySelectorAll('table').forEach(t=>{const w=document.createElement('div');w.className='tbl';t.replaceWith(w);w.appendChild(t);});
+    const noteBase=new URL('notes/',base);
+    md.querySelectorAll('a[href]').forEach(a=>{const h=a.getAttribute('href');
+      if(/^(https?:|mailto:|#)/.test(h))return;
+      const m=h.match(/^(?:\.\/)?(\d\d-[\w-]+)\.md$/);
+      if(m){a.setAttribute('href','#/notes/'+m[1]);return;}
+      a.setAttribute('href',new URL(h,noteBase).href);});
+    md.querySelectorAll('a[href^="http"]').forEach(a=>{if(!a.href.startsWith(base.origin)){a.target='_blank';a.rel='noopener';}});
+    document.title=(NOTES[i]?NOTES[i][1]+' · ':'')+'Embodied Lab';
+  }catch(e){md.innerHTML=`<p class="err">笔记加载失败（${e.message}）。如果是直接双击打开的本地文件，请用本地服务器打开：<code>python3 -m http.server</code></p>`;}
+  const prev=NOTES[i-1],next=NOTES[i+1];
+  $('pager').innerHTML=(prev?`<a class="btn" href="#/notes/${prev[0]}">← ${prev[1]}</a>`:'<span></span>')+(next?`<a class="btn" href="#/notes/${next[0]}">${next[1]} →</a>`:'');
+}
+function route(){
+  const m=location.hash.match(/^#\/notes\/([\w-]+)$/);
+  if(m){openNote(m[1]);return;}
+  $('reader').hidden=true;$('home').hidden=false;document.title='Embodied Lab 具身实验记录';
+  const t=location.hash&&location.hash.length>1&&!location.hash.startsWith('#/')?document.getElementById(location.hash.slice(1)):null;
+  if(t)t.scrollIntoView();
+}
+addEventListener('hashchange',route);route();
+})();
+</script>
+</body>
+</html>

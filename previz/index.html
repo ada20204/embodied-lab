@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nova 运镜预演台</title>
+<meta name="description" content="用镜头语法设计越疆 Nova 机械臂 + Osmo Pocket 3 的产品运镜，逐帧检查干涉、可达、限位、速度和奇异点，并自动修正。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+.home{color:var(--muted);text-decoration:none;font-size:13px}
+.home:hover{color:var(--text)}
+:root{
+  color-scheme: dark;
+  --bg:#131519; --panel:#1b1e23; --panel2:#22262c; --line:#2e333a;
+  --text:#e8e5df; --muted:#8e949c; --dim:#5d636b;
+  --accent:#f2b45a; --accent-ink:#1b1408;
+  --ok:#4fb286; --warn:#e3843a; --err:#e5484d;
+  --display:"Barlow Condensed","PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  --body:-apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei","Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:14px;line-height:1.5}
+*{box-sizing:border-box}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:auto minmax(0,1fr) auto;height:100%}
+header{grid-column:1/-1;display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.brand h1{margin:0;font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:.02em}
+.brand span{color:var(--muted);font-size:12px}
+.slate{margin-left:auto;display:flex;gap:14px;font-family:var(--display);font-size:15px;letter-spacing:.08em;color:var(--muted);font-variant-numeric:tabular-nums}
+.slate b{color:var(--text);font-weight:600}
+
+.view{position:relative;min-height:0;background:#0d0e10;overflow:hidden}
+.view canvas{display:block;width:100%;height:100%;touch-action:none}
+.monitor{position:absolute;top:34px;right:12px;width:min(40%,440px);aspect-ratio:16/9;max-width:100%;border:1px solid rgba(232,229,223,.35);pointer-events:none;
+  background-image:linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.2) calc(33.33% - .5px),rgba(255,255,255,.2) calc(33.33% + .5px),transparent calc(33.33% + .5px),transparent calc(66.66% - .5px),rgba(255,255,255,.2) calc(66.66% - .5px),rgba(255,255,255,.2) calc(66.66% + .5px),transparent calc(66.66% + .5px)),
+  linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.2) calc(33.33% - .5px),rgba(255,255,255,.2) calc(33.33% + .5px),transparent calc(33.33% + .5px),transparent calc(66.66% - .5px),rgba(255,255,255,.2) calc(66.66% - .5px),rgba(255,255,255,.2) calc(66.66% + .5px),transparent calc(66.66% + .5px))}
+.monitor .safe{position:absolute;inset:10%;border:1px dashed rgba(255,255,255,.16)}
+.mon-tag{position:absolute;left:0;top:-22px;font-family:var(--display);font-size:13px;letter-spacing:.08em;color:var(--text);display:flex;gap:8px;align-items:center;white-space:nowrap}
+.tally{width:8px;height:8px;border-radius:50%;background:var(--err)}
+.tally.idle{background:var(--dim)}
+.mon-state{position:absolute;right:6px;bottom:6px;font-size:11px;padding:2px 8px;border-radius:3px;background:rgba(0,0,0,.62)}
+.mon-state.ok{color:var(--ok)} .mon-state.warn{color:var(--warn)} .mon-state.err{color:var(--err)}
+.legend{position:absolute;left:12px;bottom:10px;font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;pointer-events:none}
+.legend i{display:inline-block;width:14px;height:3px;margin-right:5px;vertical-align:middle}
+
+aside{grid-column:2;grid-row:2/4;border-left:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:14px 16px 24px;display:flex;flex-direction:column;gap:18px}
+.sec h2{margin:0 0 8px;font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.presets{display:flex;flex-direction:column;gap:4px}
+.presets button{text-align:left;background:transparent;border:1px solid transparent;border-radius:4px;padding:6px 8px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+.presets button:hover{background:var(--panel2)}
+.presets button[aria-pressed="true"]{border-color:var(--accent);background:var(--panel2)}
+.presets small{color:var(--dim);font-family:var(--mono);font-size:11px}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{background:transparent;border:0;padding:6px 0;cursor:pointer;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.ctl{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin-top:10px}
+.ctl label{font-size:13px}
+.ctl output{font-family:var(--mono);font-size:12px;color:var(--accent);font-variant-numeric:tabular-nums}
+.ctl input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.ctl select{grid-column:1/-1;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:5px 6px}
+
+.verdict{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:4px;background:var(--panel2);border-left:3px solid var(--dim)}
+.verdict b{font-size:15px;white-space:nowrap}
+.verdict.ok{border-left-color:var(--ok)} .verdict.warn{border-left-color:var(--warn)} .verdict.err{border-left-color:var(--err)}
+.verdict span{color:var(--muted);font-size:12px}
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.chip{display:flex;justify-content:space-between;gap:6px;padding:5px 8px;border-radius:3px;background:var(--panel2);font-size:12px}
+.chip em{font-style:normal;font-family:var(--mono)}
+.chip.ok em{color:var(--ok)} .chip.warn em{color:var(--warn)} .chip.err em{color:var(--err)}
+.fix{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:6px 10px;cursor:pointer}
+.btn:hover:not(:disabled){border-color:var(--muted)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.fixnote{margin:8px 0 0;font-size:12px;color:var(--muted);line-height:1.6}
+.fixnote b{color:var(--text);font-weight:600}
+.seg2{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:4px;overflow:hidden;margin-top:10px}
+.seg2 button{background:transparent;border:0;padding:6px 0;cursor:pointer}
+.seg2 button+button{border-left:1px solid var(--line)}
+.seg2 button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.rigbtn{margin-top:10px}
+table.joints{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.joints th{font-family:var(--display);font-weight:600;letter-spacing:.06em;color:var(--muted);text-align:right;padding:3px 0;font-size:12px}
+.joints th:first-child,.joints td:first-child{text-align:left}
+.joints td{text-align:right;padding:3px 0;border-top:1px solid var(--line)}
+.joints .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+.over{color:var(--warn)}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.note{color:var(--dim);font-size:12px;line-height:1.6;margin:10px 0 0}
+
+.dock{grid-column:1;grid-row:3;border-top:1px solid var(--line);background:var(--panel);padding:8px 16px 10px;display:flex;flex-direction:column;gap:6px}
+.transport{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap}
+.play{width:34px;height:34px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);cursor:pointer;display:grid;place-items:center}
+.tc{font-family:var(--display);font-size:22px;font-weight:600;letter-spacing:.06em;font-variant-numeric:tabular-nums}
+.tc small{color:var(--muted);font-size:13px;margin-left:6px}
+.reason{margin-left:auto;font-size:12px;color:var(--muted)}
+.strip{height:16px;width:100%;cursor:pointer;border-radius:2px}
+.graph{height:92px;width:100%;cursor:pointer}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--text);color:var(--bg);padding:6px 12px;border-radius:4px;font-size:13px;z-index:9}
+
+@media (max-width:860px){
+  html,body{height:auto}
+  .app{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 56vh auto auto;height:auto}
+  aside{grid-column:1;grid-row:4;border-left:0;border-top:1px solid var(--line);overflow:visible}
+  .dock{grid-row:3}
+  .monitor{width:48%}
+  .slate{margin-left:0}
+  .reason{margin-left:0;width:100%}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div class="brand"><a class="home" href="../">← 项目主页</a><h1>Nova 运镜预演台</h1><span>Nova 5 · Osmo Pocket 3 · 产品影棚</span></div>
+    <div class="slate" aria-label="场记板"><span>SC <b id="sc">01</b></span><span>TK <b id="tk">01</b></span><span>25 FPS</span><span>伺服 <b>50 Hz</b></span></div>
+  </header>
+
+  <div class="view" id="view">
+    <canvas id="gl" aria-label="机械臂与影棚三维视图，可拖动旋转"></canvas>
+    <div class="monitor" id="monitor">
+      <div class="mon-tag"><span class="tally" id="tally"></span><span id="monLabel">POCKET 3 · 20mm</span></div>
+      <div class="safe"></div>
+      <div class="mon-state ok" id="monState">正常</div>
+    </div>
+    <div class="legend">
+      <span><i style="background:#4fb286"></i>可执行</span>
+      <span><i style="background:#e3843a"></i>需调整</span>
+      <span><i style="background:#e5484d"></i>不可执行 / 干涉部件</span>
+      <span>拖动旋转 · 双指缩放</span>
+    </div>
+  </div>
+
+  <div class="dock">
+    <div class="transport">
+      <button class="play" id="play" aria-label="播放/暂停（空格）"><svg width="14" height="14" viewBox="0 0 14 14" id="playIcon"><path d="M3 1.5v11l9-5.5z" fill="currentColor"/></svg></button>
+      <div class="tc" id="tc">00:00:00:00<small id="dur">/ 06:00</small></div>
+      <div class="reason" id="reason">拖动时间线可逐帧检查</div>
+    </div>
+    <canvas class="strip" id="strip" aria-label="逐帧检查结果时间线"></canvas>
+    <canvas class="graph" id="graph" aria-label="六轴关节角曲线"></canvas>
+  </div>
+
+  <aside>
+    <section class="sec">
+      <h2>镜头预设</h2>
+      <div class="presets" id="presets"></div>
+    </section>
+    <section class="sec">
+      <h2>执行前检查</h2>
+      <div class="verdict" id="verdict"><b>—</b><span></span></div>
+      <div class="chips" id="chips"></div>
+      <div class="fix">
+        <button class="btn primary" id="fixBtn">自动修正</button>
+        <button class="btn" id="undoBtn" disabled>撤销修正</button>
+      </div>
+      <p class="fixnote" id="fixNote">有问题时，自动修正会找一个最接近原设计、全部通过检查的版本；全部通过时，“优化余量”会在不大改构图的前提下让手腕更从容、间隙更大。</p>
+    </section>
+    <section class="sec">
+      <h2>Pocket 3 · 安装与云台</h2>
+      <div id="rig"></div>
+      <p class="fixnote" id="gimNote"></p>
+    </section>
+    <section class="sec">
+      <h2>镜头语法</h2>
+      <div class="seg" id="seg" role="group" aria-label="镜头类型"></div>
+      <div id="params"></div>
+      <div id="common"></div>
+    </section>
+    <section class="sec">
+      <h2>关节 · 当前帧</h2>
+      <table class="joints" id="joints"><thead><tr><th>轴</th><th>角度°</th><th>峰值°/s</th><th>上限</th></tr></thead><tbody></tbody></table>
+    </section>
+    <section class="sec">
+      <h2>导出</h2>
+      <div class="btnrow">
+        <button class="btn" id="dlCsv">下载关节轨迹 CSV</button>
+        <button class="btn" id="dlShot">下载镜头参数 JSON</button>
+        <button class="btn" id="copyCsv">复制 CSV</button>
+        <button class="btn" id="copyShot">复制 JSON</button>
+      </div>
+      <p class="note">CSV 为 50 Hz 关节角（度），可直接给 ServoJ 执行脚本。运动学为近似 DH（臂展约 0.85 m）；你在 3D 视图里看到的连杆胶囊体就是碰撞检查用的几何，与产品、台面、底座、背景墙保持 2 cm 余量，并检查大臂、小臂与腕部、相机之间的自碰撞。所有速度曲线都从静止起步、回到静止；另外检查关节加速度（按 300/450°/s² 乘速度上限比例）和腕部奇异余量（|sin J5| ≥ 0.3）。Pocket 3 按公开外形尺寸（139.7×42.2×33.5 mm）建模，镜头光心在手柄底面上方约 12 cm，手柄和云台都参与碰撞检查；倒挂拍摄的画面需要后期旋转 180°。接入越疆官方 URDF 后替换参数即可。</p>
+    </section>
+  </aside>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="kin.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+'use strict';
+const K=KIN,D2R=K.D2R,R2D=K.R2D,DT=0.02;
+K.setProduct(0.6,-0.4);
+const FACE=Math.round(K.facing()),TARGET=K.TARGET,PROD=K.LAYOUT.product;
+const lerp=(a,b,t)=>a+(b-a)*t;
+
+/* ---------- 状态与预设 ---------- */
+const S={type:'orbit',dur:6,ease:'smooth',focal:20,pct:70,mount:'side',gimbalMode:false,gim:{p0:0,t0:0,p1:0,t1:0},params:{
+  orbit:{r:0.28,h:0.14,a0:FACE-45,a1:FACE+45},
+  dolly:{az:FACE,d0:0.36,d1:0.2,h:0.03},
+  reveal:{az0:FACE-30,az1:FACE+25,r:0.3,h0:0,h1:0.16},
+  top:{h:0.3,s0:0,s1:90}}};
+const PRESETS=[
+  {name:'香水 · 微俯弧形环绕',tag:'正挂',mount:'side',type:'orbit',dur:6,ease:'smooth',p:{r:0.28,h:0.14,a0:FACE-45,a1:FACE+45}},
+  {name:'低机位缓慢推近',tag:'倒挂',mount:'invert',type:'dolly',dur:5,ease:'out',p:{az:FACE,d0:0.36,d1:0.2,h:0.03}},
+  {name:'贴台升起揭示',tag:'倒挂',mount:'invert',type:'reveal',dur:6,ease:'smooth',p:{az0:FACE-30,az1:FACE+25,r:0.3,h0:0,h1:0.16}},
+  {name:'俯拍旋转收尾',tag:'正挂',mount:'side',type:'top',dur:6,ease:'smooth',p:{h:0.3,s0:0,s1:90}},
+  {name:'360° 全环绕（需修正）',tag:'正挂',mount:'side',type:'orbit',dur:10,ease:'linear',p:{r:0.28,h:0.06,a0:FACE-180,a1:FACE+180}}
+];
+const TYPES=[['orbit','环绕'],['dolly','推拉'],['reveal','揭示'],['top','俯拍']];
+const DEFS={
+  orbit:[['r','半径','m'],['h','相对高度','m'],['a0','起始角','°'],['a1','终止角','°']],
+  dolly:[['az','方位角','°'],['d0','起始距离','m'],['d1','终止距离','m'],['h','相对高度','m']],
+  reveal:[['az0','起始方位','°'],['az1','终止方位','°'],['r','半径','m'],['h0','起始高度','m'],['h1','终止高度','m']],
+  top:[['h','离瓶中心高度','m'],['s0','起始旋转','°'],['s1','终止旋转','°']]
+};
+const COMMON=[['dur','时长',2,20,0.5,'s'],['focal','等效焦距',20,80,1,'mm'],['pct','速度上限',30,100,5,'%']];
+let presetIdx=0,take=1,undoState=null;
+function setMount(m){S.mount=m;K.setMount(m);if(typeof applyMountVisual==='function')applyMountVisual();}
+const shot=()=>({type:S.type,dur:S.dur,ease:S.ease,p:S.params[S.type],gim:S.gim});
+
+const $=id=>document.getElementById(id);
+const fmt=(v,u)=>(u==='m'?v.toFixed(2):u==='s'?v.toFixed(1):Math.round(v))+' '+u;
+function slider(id,label,min,max,step,unit,get,set){
+  const w=document.createElement('div');w.className='ctl';
+  w.innerHTML=`<label for="${id}">${label}</label><output>${fmt(get(),unit)}</output><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${get()}">`;
+  const inp=w.querySelector('input'),out=w.querySelector('output');
+  inp.addEventListener('input',()=>{set(parseFloat(inp.value));out.textContent=fmt(parseFloat(inp.value),unit);userEdit();});
+  return w;
+}
+function buildParams(){
+  const box=$('params');box.innerHTML='';const P=S.params[S.type],SP=K.SPACE[S.type];
+  for(const [k,l,u] of DEFS[S.type]){const [lo,hi,st]=SP[k];box.appendChild(slider('p-'+S.type+'-'+k,l,lo,hi,u==='m'?0.01:5,u,()=>P[k],v=>{P[k]=v;}));}
+  $('seg').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.t===S.type));
+}
+function buildCommon(){
+  const box=$('common');box.innerHTML='';
+  for(const [k,l,a,b,s,u] of COMMON)box.appendChild(slider('p-'+k,l,a,b,s,u,()=>S[k],v=>{S[k]=v;}));
+  const w=document.createElement('div');w.className='ctl';
+  w.innerHTML=`<label for="p-ease">速度曲线</label><output></output><select id="p-ease"><option value="smooth">平滑缓入缓出（五次）</option><option value="linear">匀速（S 形缓起缓停）</option><option value="out">快起慢停</option><option value="in">慢起快停</option></select>`;
+  const sel=w.querySelector('select');sel.value=S.ease;sel.addEventListener('change',()=>{S.ease=sel.value;userEdit();});
+  box.appendChild(w);
+}
+function buildRig(){
+  const box=$('rig');box.innerHTML='';
+  const mw=document.createElement('div');mw.className='ctl';mw.style.marginTop='0';
+  mw.innerHTML=`<label for="p-mount">安装方式</label><output></output><select id="p-mount">${Object.entries(K.MOUNTS).map(([k,m])=>`<option value="${k}">${m.name}</option>`).join('')}</select>`;
+  const ms=mw.querySelector('select');ms.value=S.mount;ms.addEventListener('change',()=>{setMount(ms.value);if(S.gimbalMode)planGimbalNow();else userEdit();});
+  box.appendChild(mw);
+  const sg=document.createElement('div');sg.className='seg2';sg.setAttribute('role','group');sg.setAttribute('aria-label','云台模式');
+  sg.innerHTML=`<button data-g="0" aria-pressed="${!S.gimbalMode}">云台锁定</button><button data-g="1" aria-pressed="${S.gimbalMode}">云台分担</button>`;
+  sg.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>setGimbalMode(b.dataset.g==='1')));
+  box.appendChild(sg);
+  if(S.gimbalMode){const G=S.gim;
+    for(const [k,l,lo,hi] of [['p0','平移 · 起始',-90,90],['p1','平移 · 结束',-90,90],['t0','俯仰 · 起始（+ 向下）',-30,60],['t1','俯仰 · 结束（+ 向下）',-30,60]])
+      box.appendChild(slider('g-'+k,l,lo,hi,5,'°',()=>G[k],v=>{G[k]=v;}));
+    const b=document.createElement('button');b.className='btn rigbtn';b.id='planBtn';b.textContent='自动分配云台';b.addEventListener('click',planGimbalNow);box.appendChild(b);}
+}
+function setGimbalMode(on){S.gimbalMode=on;K.setGimbal(on);undoState=null;take++;
+  if(on)planGimbalNow();else{buildRig();recompile();$('gimNote').innerHTML=GIMTXT_LOCK;}}
+const GIMTXT_LOCK='云台锁定在回中位置，所有转动由机械臂完成。每一遍的运动完全一致，适合要拍多遍再合成的镜头。';
+function wristStats(R){return {trav:R.wristTravel*R2D,pk:R.wristPk,sin:R.minSin,clr:R.minClr};}
+function planGimbalNow(){
+  $('gimNote').textContent='正在为云台分配起止角度…';const pb=$('planBtn');if(pb)pb.disabled=true;
+  setTimeout(()=>{
+    K.setGimbal(false);const R0=K.compile(shot(),DT,S.pct);K.setGimbal(true);
+    const res=K.planGimbal(shot(),S.pct);S.gim=res.gim;buildRig();recompile();
+    const a=wristStats(R0),b=wristStats(TRAJ),G=S.gim;
+    $('gimNote').innerHTML=`云台从 平移 ${G.p0}° / 俯仰 ${G.t0}° 平滑转到 平移 ${G.p1}° / 俯仰 ${G.t1}°（试算 ${res.evals} 组），与镜头同一速度曲线，对应 Pocket 3 的“带时长的绝对角度”指令。`+
+      `<br>与云台锁定相比：手腕总行程 ${a.trav.toFixed(0)}° → <b>${b.trav.toFixed(0)}°</b>，腕部峰值 ${a.pk.toFixed(0)} → <b>${b.pk.toFixed(0)}°/s</b>，奇异余量 ${a.sin.toFixed(2)} → <b>${b.sin.toFixed(2)}</b>，最小间隙 ${(Math.max(0,a.clr)*100).toFixed(1)} → <b>${(Math.max(0,b.clr)*100).toFixed(1)} cm</b>。`+
+      `<br>代价：机械臂和云台需要同时起步，接真机前要先实测蓝牙指令的延迟和重复精度。`;
+  },40);
+}
+function buildSeg(){
+  for(const [t,l] of TYPES){const b=document.createElement('button');b.dataset.t=t;b.textContent=l;
+    b.addEventListener('click',()=>{S.type=t;buildParams();userEdit();});$('seg').appendChild(b);}
+}
+function buildPresets(){
+  PRESETS.forEach((p,i)=>{const b=document.createElement('button');b.innerHTML=`<span>${p.name}</span><small>${p.tag}</small>`;
+    b.addEventListener('click',()=>applyPreset(i));$('presets').appendChild(b);});
+}
+function applyPreset(i){
+  presetIdx=i;take=1;undoState=null;const p=PRESETS[i];setMount(p.mount);
+  S.type=p.type;S.dur=p.dur;S.ease=p.ease;S.params[p.type]=Object.assign({},p.p);
+  $('presets').querySelectorAll('button').forEach((b,j)=>b.setAttribute('aria-pressed',j===i));
+  $('fixNote').textContent='有问题时，自动修正会找一个最接近原设计、全部通过检查的版本；全部通过时，“优化余量”会在不大改构图的前提下让手腕更从容、间隙更大。';
+  buildParams();buildCommon();buildRig();
+  if(S.gimbalMode){S.gim={p0:0,t0:0,p1:0,t1:0};recompile();planGimbalNow();}else{recompile();$('gimNote').innerHTML=GIMTXT_LOCK;}
+  tNow=0;
+}
+let pend=false;
+function userEdit(){take++;undoState=null;if(!pend){pend=true;requestAnimationFrame(()=>{pend=false;recompile();});}}
+
+/* ---------- Three.js 场景 ---------- */
+const canvas=$('gl'),view=$('view'),monitor=$('monitor');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+renderer.outputEncoding=THREE.sRGBEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x0d0e10);
+const root=new THREE.Group();root.rotation.x=-Math.PI/2;scene.add(root);  // 机器人坐标系，Z 向上
+const mainCam=new THREE.PerspectiveCamera(40,1,0.01,30);
+const controls=new THREE.OrbitControls(mainCam,canvas);controls.enableDamping=true;
+(function initView(){const c=new THREE.Vector3(0.32,0.14,0.2);mainCam.position.set(-0.75,1.05,0.95);controls.target.copy(c);controls.update();})();
+const vcam=new THREE.PerspectiveCamera(50,16/9,0.01,20);vcam.matrixAutoUpdate=false;
+const toV=p=>new THREE.Vector3(p[0],p[1],p[2]);
+
+// 影棚：沿“机器人→产品”方向布置，背景墙在产品后方
+const N=K.wallN(),YAW=Math.atan2(N[1],N[0]),GAP=K.LAYOUT.wallGap;
+const studio=new THREE.Group();studio.position.set(PROD[0],PROD[1],0);studio.rotation.z=YAW;root.add(studio);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(3.2,3.2),new THREE.MeshStandardMaterial({color:0x1a1b1f,roughness:0.16}));
+floor.position.set(-0.5,0,0);floor.receiveShadow=true;studio.add(floor);
+(function cyc(){
+  const R=0.2,pts=[[GAP-R-0.001,0.0005]];
+  for(let k=1;k<=14;k++){const a=-Math.PI/2+k/14*Math.PI/2;pts.push([GAP-R+R*Math.cos(a)+0.0,R+R*Math.sin(a)]);}
+  pts.push([GAP,1.6]);
+  const pos=[],idx=[];pts.forEach(([x,z])=>pos.push(x,-1.4,z,x,1.4,z));
+  for(let i=0;i<pts.length-1;i++){const a=i*2;idx.push(a,a+2,a+1,a+1,a+2,a+3);}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setIndex(idx);g.computeVertexNormals();
+  const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0x2c2e33,roughness:0.92,side:THREE.DoubleSide}));m.receiveShadow=true;
+  m.position.z=0.0008;studio.add(m);
+})();
+// 产品：香水瓶
+(function bottle(){
+  const prof=[[0,0],[0.038,0],[0.042,0.006],[0.042,0.118],[0.037,0.134],[0.015,0.146],[0.015,0.156],[0,0.156]].map(([r,h])=>new THREE.Vector2(r,h));
+  const glass=new THREE.MeshPhysicalMaterial({color:0xe8b27a,roughness:0.05,metalness:0,transmission:0.8,transparent:true,opacity:0.95,clearcoat:1,clearcoatRoughness:0.05});
+  const b=new THREE.Mesh(new THREE.LatheGeometry(prof,48),glass);b.rotation.x=Math.PI/2;b.castShadow=true;studio.add(b);
+  const cap=new THREE.Mesh(new THREE.CylinderGeometry(0.022,0.022,0.036,40),new THREE.MeshStandardMaterial({color:0xbf9558,metalness:1,roughness:0.26}));
+  cap.rotation.x=Math.PI/2;cap.position.z=0.174;cap.castShadow=true;studio.add(cap);
+  const liq=new THREE.Mesh(new THREE.CylinderGeometry(0.034,0.034,0.09,40),new THREE.MeshStandardMaterial({color:0xc97a30,roughness:0.3,transparent:true,opacity:0.55}));
+  liq.rotation.x=Math.PI/2;liq.position.z=0.052;studio.add(liq);
+})();
+// 灯光（影棚局部坐标：+x 远离机器人）
+scene.add(new THREE.HemisphereLight(0xa6afbd,0x1b1c20,0.45));
+function spot(color,inten,lp,shadow){
+  const l=new THREE.SpotLight(color,inten,6,0.6,0.8,1.1);
+  scene.updateMatrixWorld(true);l.position.copy(studio.localToWorld(new THREE.Vector3(...lp)));
+  l.target.position.copy(studio.localToWorld(new THREE.Vector3(0,0,0.09)));scene.add(l,l.target);
+  if(shadow){l.castShadow=true;l.shadow.mapSize.set(1024,1024);l.shadow.bias=-0.0004;}
+  const box=new THREE.Mesh(new THREE.PlaneGeometry(0.12,0.46),new THREE.MeshBasicMaterial({color:0xfff4e6,side:THREE.DoubleSide}));
+  box.position.set(...lp);studio.add(box);box.lookAt(l.target.position);return l;}
+scene.updateMatrixWorld(true);
+spot(0xffd6a0,2.8,[0.32,0.55,0.75],true);   // 侧后主光（暖）
+spot(0xbfd4ff,2.0,[0.36,-0.6,0.42],false);  // 轮廓光（冷）
+spot(0xffffff,0.7,[-0.45,-0.25,0.55],false);// 前侧辅光
+
+// 机械臂：连杆胶囊体 = 碰撞几何
+const WHITE=0xe7e5e0,RED=0xe5484d;
+const dark=new THREE.MeshStandardMaterial({color:0x2a2d32,roughness:0.55});
+const Yv=new THREE.Vector3(0,1,0),cyl=new THREE.CylinderGeometry(1,1,1,32),sph=new THREE.SphereGeometry(1,24,16);
+const base=new THREE.Mesh(new THREE.CylinderGeometry(K.LAYOUT.baseR,K.LAYOUT.baseR+0.008,K.LAYOUT.baseH,40),new THREE.MeshStandardMaterial({color:WHITE,roughness:0.42}));
+base.rotation.x=Math.PI/2;base.position.z=K.LAYOUT.baseH/2;base.castShadow=true;root.add(base);
+const plate=new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.11,0.012,40),dark);plate.rotation.x=Math.PI/2;plate.position.z=0.006;root.add(plate);
+const caps=[];
+for(let i=0;i<5;i++){const mat=new THREE.MeshStandardMaterial({color:WHITE,roughness:0.42,metalness:0.04});
+  const body=new THREE.Mesh(cyl,mat),e1=new THREE.Mesh(sph,mat),e2=new THREE.Mesh(sph,mat);
+  [body,e1,e2].forEach(m=>{m.castShadow=true;root.add(m);});caps.push({mat,body,e1,e2});}
+const housings=[];
+for(let i=1;i<=5;i++){const r=i<=2?0.062:i===3?0.052:0.046;const g=new THREE.Group();
+  const h=new THREE.Mesh(cyl,new THREE.MeshStandardMaterial({color:WHITE,roughness:0.42}));h.scale.set(r,r*2.1,r);h.castShadow=true;g.add(h);
+  const ring=new THREE.Mesh(cyl,dark);ring.scale.set(r*1.01,0.012,r*1.01);ring.position.y=r*1.05;g.add(ring);
+  root.add(g);housings.push(g);}
+/* ---------- DJI Osmo Pocket 3（按公开外形尺寸建模：139.7×42.2×33.5 mm） ----------
+   Pocket 坐标系：原点=手柄底面中心，+Y 沿手柄向上，+Z=镜头朝向，屏幕在背面 -Z */
+const P3=K.POCKET,HB=P3.d/2;
+const pocket=new THREE.Group();pocket.matrixAutoUpdate=false;root.add(pocket);
+const flangeG=new THREE.Group();flangeG.matrixAutoUpdate=false;root.add(flangeG);
+const lensG=new THREE.Group();lensG.matrixAutoUpdate=false;root.add(lensG);
+const handleMat=new THREE.MeshStandardMaterial({color:0x2a2c30,roughness:0.62,metalness:0.05});
+const headMat=new THREE.MeshStandardMaterial({color:0x2a2c30,roughness:0.5,metalness:0.08});
+const motorMat=new THREE.MeshStandardMaterial({color:0x3a3d43,roughness:0.45,metalness:0.2});
+const glassMat=new THREE.MeshStandardMaterial({color:0x07080a,roughness:0.06,metalness:0.6});
+const ringMat=new THREE.MeshStandardMaterial({color:0x8a8f96,roughness:0.3,metalness:0.9});
+const rt=new THREE.WebGLRenderTarget(320,180);rt.texture.encoding=THREE.sRGBEncoding;rt.texture.center.set(0.5,0.5);
+const screenMat=new THREE.MeshBasicMaterial({map:rt.texture,toneMapped:false});
+function rrect(w,h,r){const s=new THREE.Shape(),x=-w/2,y=-h/2;s.moveTo(x+r,y);s.lineTo(x+w-r,y);s.quadraticCurveTo(x+w,y,x+w,y+r);s.lineTo(x+w,y+h-r);
+  s.quadraticCurveTo(x+w,y+h,x+w-r,y+h);s.lineTo(x+r,y+h);s.quadraticCurveTo(x,y+h,x,y+h-r);s.lineTo(x,y+r);s.quadraticCurveTo(x,y,x+r,y);return s;}
+function add(mesh,x,y,z,parent){mesh.position.set(x,y,z);mesh.castShadow=true;(parent||pocket).add(mesh);return mesh;}
+function cylZ(r,len,mat){const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,32),mat);m.rotation.x=Math.PI/2;return m;}
+function cylX(r,len,mat){const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,32),mat);m.rotation.z=Math.PI/2;return m;}
+const panG=new THREE.Group(),tiltG=new THREE.Group();
+(function buildPocket3(){
+  const bev=0.003;
+  // 手柄：42.2×33.5 圆角截面，沿 +Y 拉伸
+  const hg=new THREE.ExtrudeGeometry(rrect(P3.w-2*0.002,P3.d-2*0.002,0.008),{depth:P3.handleH-2*bev,bevelEnabled:true,bevelThickness:bev,bevelSize:0.002,bevelSegments:3,curveSegments:8});
+  const handle=new THREE.Mesh(hg,handleMat);handle.rotation.x=-Math.PI/2;add(handle,0,bev,0);
+  // 背面：2 英寸旋转屏（横屏状态）、5D 摇杆、拍摄键
+  add(new THREE.Mesh(new THREE.BoxGeometry(0.0465,0.0285,0.003),new THREE.MeshStandardMaterial({color:0x0b0c0e,roughness:0.3})),0,0.078,-HB-0.0015);
+  const scr=new THREE.Mesh(new THREE.PlaneGeometry(0.0425,0.0239),screenMat);scr.rotation.y=Math.PI;scr.position.set(0,0.078,-HB-0.0031);pocket.add(scr);
+  add(cylZ(0.0032,0.003,motorMat),-0.009,0.058,-HB-0.0012);
+  add(cylZ(0.0046,0.002,new THREE.MeshStandardMaterial({color:0x4a4d53,roughness:0.4})),0.009,0.058,-HB-0.0008);
+  // 三轴云台：平移电机（顶，固定在手柄上）→ panG（背部立臂、横滚电机、侧臂、俯仰电机）→ tiltG（相机头）
+  add(new THREE.Mesh(new THREE.CylinderGeometry(0.0165,0.017,0.012,40),motorMat),0,P3.handleH+0.006,-0.004);
+  panG.position.set(0,P3.lensY,0);pocket.add(panG);panG.add(tiltG);const L=P3.lensY;
+  add(new THREE.Mesh(new THREE.BoxGeometry(0.014,0.02,0.009),motorMat),0,0.114-L,-0.02,panG);
+  add(cylZ(0.0115,0.01,motorMat),0,0,-0.02,panG);
+  add(new THREE.Mesh(new THREE.BoxGeometry(0.02,0.012,0.006),motorMat),0.011,0,-0.0205,panG);
+  add(new THREE.Mesh(new THREE.BoxGeometry(0.006,0.012,0.02),motorMat),0.0205,0,-0.011,panG);
+  add(cylX(0.0105,0.007,motorMat),0.0185,0,0,panG);
+  // 相机头与 1 英寸镜头（随俯仰转动）
+  const hd=new THREE.ExtrudeGeometry(rrect(0.028,0.027,0.005),{depth:0.02,bevelEnabled:true,bevelThickness:0.002,bevelSize:0.0015,bevelSegments:3,curveSegments:8});
+  add(new THREE.Mesh(hd,headMat),0,0,-0.0105,tiltG);
+  add(cylZ(0.0118,0.004,headMat),0,0,0.0125,tiltG);
+  add(cylZ(0.0098,0.003,glassMat),0,0,0.0138,tiltG);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(0.0105,0.0006,8,40),ringMat);add(ring,0,0,0.0147,tiltG);
+})();
+// 安装件
+const mountParts={
+  clamp:(()=>{const g=new THREE.Group();
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.05,0.026,0.012),new THREE.MeshStandardMaterial({color:0x6b7078,roughness:0.35,metalness:0.8})),0,0.04,-HB-0.006,g);
+    for(const sx of [-1,1])add(new THREE.Mesh(new THREE.BoxGeometry(0.004,0.026,0.036),new THREE.MeshStandardMaterial({color:0x6b7078,roughness:0.35,metalness:0.8})),sx*0.0233,0.04,-0.0105,g);
+    pocket.add(g);return g;})(),
+  adapter:(()=>{const g=new THREE.Group();const m=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.02,0.012,32),new THREE.MeshStandardMaterial({color:0x6b7078,roughness:0.35,metalness:0.8}));
+    add(m,0,-0.006,0,g);pocket.add(g);return g;})()
+};
+add(cylZ(0.032,0.01,dark),0,0,0.005,flangeG);
+(function frustum(){
+  const d=0.1,hh=d*10.125/20,w=hh*16/9,c=[[w,hh],[-w,hh],[-w,-hh],[w,-hh]],p=[];
+  c.forEach(([x,y])=>p.push(0,0,0,x,y,d));for(let i=0;i<4;i++){const a=c[i],b=c[(i+1)%4];p.push(a[0],a[1],d,b[0],b[1],d);}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));
+  lensG.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xf2b45a})));
+})();
+function applyMountVisual(){const m=K.getMount();mountParts.clamp.visible=m!=='bottom';mountParts.adapter.visible=m==='bottom';
+  rt.texture.rotation=K.MOUNTS[m].flip?Math.PI:0;}
+const tgt=new THREE.Mesh(new THREE.TorusGeometry(0.018,0.0015,8,40),new THREE.MeshBasicMaterial({color:0xf2b45a}));tgt.position.set(...TARGET);root.add(tgt);
+let pathLine=null;
+function setCapsule(c,a,b,r){const A=toV(a),B=toV(b),d=B.clone().sub(A),L=d.length();
+  c.body.position.copy(A).add(B).multiplyScalar(0.5);if(L>1e-6)c.body.quaternion.setFromUnitVectors(Yv,d.normalize());c.body.scale.set(r,Math.max(L,1e-4),r);
+  c.e1.position.copy(A);c.e2.position.copy(B);c.e1.scale.setScalar(r);c.e2.scale.setScalar(r);}
+const m4=T=>{const m=new THREE.Matrix4();m.set(...T);return m;};
+const FLIP=new THREE.Matrix4().makeRotationX(Math.PI),ROOTM=new THREE.Matrix4().makeRotationX(-Math.PI/2);
+function updateRobot(q,cmask){
+  const F=K.fk(q),C=K.capsules(F);
+  for(let i=0;i<5;i++){setCapsule(caps[i],C[i].a,C[i].b,C[i].r*0.92);caps[i].mat.color.setHex(cmask&(1<<i)?RED:WHITE);}
+  for(let i=1;i<=5;i++){const g=housings[i-1];g.position.copy(toV(K.P(F[i])));g.quaternion.setFromUnitVectors(Yv,toV(K.COL(F[i],2)));}
+  handleMat.color.setHex(cmask&32?RED:0x2a2c30);headMat.color.setHex(cmask&64?RED:0x2a2c30);
+  panG.rotation.y=q[6]||0;tiltG.rotation.x=q[7]||0;
+  pocket.matrix.copy(m4(K.mul(F[6],K.mountMatrix())));pocket.matrixWorldNeedsUpdate=true;
+  flangeG.matrix.copy(m4(F[6]));flangeG.matrixWorldNeedsUpdate=true;
+  lensG.matrix.copy(m4(F[7]));lensG.matrixWorldNeedsUpdate=true;
+  vcam.matrix.copy(ROOTM).multiply(m4(F[7])).multiply(FLIP);vcam.matrixWorldNeedsUpdate=true;
+}
+
+/* ---------- 编译与检查 ---------- */
+let TRAJ=null;
+const COLORS={ok:'#4fb286',warn:'#e3843a',err:'#e5484d'};
+const sev=s=>s&K.ERRM?'err':s&K.WARNM?'warn':'ok';
+function recompile(){
+  TRAJ=K.compile(shot(),DT,S.pct);
+  if(pathLine){root.remove(pathLine);pathLine.geometry.dispose();}
+  const pos=[],col=[];TRAJ.des.forEach((p,i)=>{pos.push(...p);const c=new THREE.Color(COLORS[sev(TRAJ.st[i])]);col.push(c.r,c.g,c.b);});
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  pathLine=new THREE.Line(g,new THREE.LineBasicMaterial({vertexColors:true}));root.add(pathLine);
+  vcam.fov=2*Math.atan(10.125/S.focal)*R2D;vcam.updateProjectionMatrix();
+  $('monLabel').textContent=`POCKET 3 · ${S.focal}mm${K.MOUNTS[S.mount].flip?' · 已翻转 180°':''}`;
+  $('sc').textContent=String(presetIdx+1).padStart(2,'0');$('tk').textContent=String(take).padStart(2,'0');
+  $('dur').textContent='/ '+tcShort(S.dur);
+  if(tNow>S.dur)tNow=0;
+  renderChecks();drawStripBase();drawGraphBase();
+}
+const LABEL={unreach:'不可达',collide:'干涉',limit:'超限位',speed:'超速',accel:'超加速',shock:'起停冲击',sing:'近奇异'};
+function renderChecks(){
+  const c=TRAJ.count,n=TRAJ.n,errF=TRAJ.st.filter(s=>s&K.ERRM).length,warnF=TRAJ.st.filter(s=>s&K.WARNM).length;
+  const v=$('verdict');v.className='verdict '+(errF?'err':warnF?'warn':'ok');
+  v.innerHTML=errF?`<b>不可执行</b><span>${Math.round(errF/n*100)}% 的帧有硬性问题，可试试自动修正</span>`:
+    warnF?`<b>需调整</b><span>降低速度或避开奇异区后可执行</span>`:`<b>可执行</b><span>${n} 帧全部通过，可下发 ServoJ</span>`;
+  const clr=TRAJ.minClr,clrCls=!isFinite(clr)?'err':clr<0.03?'warn':'ok';
+  const sn=TRAJ.minSin,snCls=sn<K.SING_MIN?'warn':'ok',wp=TRAJ.wristPk;
+  $('chips').innerHTML=Object.keys(K.BIT).map(k=>{const cls=c[k]===0?'ok':(K.BIT[k]&K.ERRM?'err':'warn');
+    return `<div class="chip ${cls}"><span>${LABEL[k]}</span><em>${c[k]===0?'通过':c[k]+' 帧'}</em></div>`;}).join('')+
+    `<div class="chip ${clrCls}"><span>最小间隙</span><em>${isFinite(clr)?(Math.max(0,clr)*100).toFixed(1)+' cm':'—'}</em></div>`+
+    `<div class="chip ${snCls}"><span>腕部奇异余量</span><em>${sn.toFixed(2)}</em></div>`+
+    `<div class="chip"><span>腕部峰值</span><em>${wp.toFixed(0)}°/s</em></div>`;
+  const fb=$('fixBtn');if(!fb.dataset.busy){fb.disabled=false;fb.textContent=(errF||warnF)?'自动修正':'优化余量';}
+  $('undoBtn').disabled=!undoState;
+}
+const JCOL=['#7fb3ff','#c792ea','#5fd4c4','#f28fad','#b5d66a','#e8e5df','#f2b45a','#ffd9a8'];
+const JNAME=['J1','J2','J3','J4','J5','J6','云台平移','云台俯仰'];
+function renderJoints(q){
+  const tb=$('joints').tBodies[0];
+  if(tb.rows.length!==8){tb.innerHTML='';for(let j=0;j<8;j++){const r=tb.insertRow();r.innerHTML=`<td><span class="sw" style="background:${JCOL[j]}"></span>${JNAME[j]}</td><td></td><td></td><td></td>`;}}
+  for(let j=0;j<8;j++){tb.rows[j].hidden=j>=6&&!S.gimbalMode;const r=tb.rows[j],pk=TRAJ.peak[j]*R2D,lim=TRAJ.vlim[j]*R2D;
+    r.cells[1].textContent=(q[j]*R2D).toFixed(1);r.cells[2].textContent=pk.toFixed(0);r.cells[2].className=pk>lim?'over':'';r.cells[3].textContent=lim.toFixed(0);}
+}
+
+/* ---------- 自动修正 ---------- */
+const NAMES={r:'半径',h:'高度',a0:'起始角',a1:'终止角',az:'方位角',d0:'起始距离',d1:'终止距离',az0:'起始方位',az1:'终止方位',h0:'起始高度',h1:'终止高度',s0:'起始旋转',s1:'终止旋转'};
+const unitOf=k=>/^(a0|a1|az|az0|az1|s0|s1)$/.test(k)?'°':'m';
+$('fixBtn').addEventListener('click',()=>{
+  const btn=$('fixBtn');btn.disabled=true;btn.dataset.busy='1';btn.textContent='计算中…';
+  const prev=TRAJ,wasOk=!prev.st.some(s=>s&(K.ERRM|K.WARNM));
+  setTimeout(()=>{
+    const before={p:Object.assign({},S.params[S.type]),dur:S.dur,mount:S.mount,gim:Object.assign({},S.gim)};
+    const res=K.repair(shot(),S.pct);
+    S.params[S.type]=res.p;S.dur=res.dur;setMount(res.mount);take++;
+    if(S.gimbalMode)S.gim=K.planGimbal(shot(),S.pct).gim;
+    buildParams();buildCommon();buildRig();recompile();tNow=0;
+    const diffs=Object.keys(res.p).filter(k=>Math.abs(res.p[k]-before.p[k])>1e-6).map(k=>`${NAMES[k]} ${fmt(before.p[k],unitOf(k))} → <b>${fmt(res.p[k],unitOf(k))}</b>`);
+    if(res.mount!==before.mount)diffs.unshift(`安装方式 ${K.MOUNTS[before.mount].name} → <b>${K.MOUNTS[res.mount].name}</b>`);
+    if(res.dur!==before.dur)diffs.push(`时长 ${before.dur.toFixed(1)} s → <b>${res.dur.toFixed(1)} s</b>`);
+    const ok=!TRAJ.st.some(s=>s&(K.ERRM|K.WARNM));
+    $('fixNote').innerHTML=(ok&&wasOk?'已优化（试算 '+res.evals+' 组）：':ok?'已找到可执行版本（试算 '+res.evals+' 组）：':'已尽量减少问题帧（试算 '+res.evals+' 组），仍需人工调整：')+(diffs.length?diffs.join('；'):'参数不变');
+    const qual=`奇异余量 ${prev.minSin.toFixed(2)} → <b>${TRAJ.minSin.toFixed(2)}</b>，腕部峰值 ${prev.wristPk.toFixed(0)} → <b>${TRAJ.wristPk.toFixed(0)}°/s</b>，最小间隙 ${(Math.max(0,prev.minClr)*100).toFixed(1)} → <b>${(Math.max(0,TRAJ.minClr)*100).toFixed(1)} cm</b>。`;
+    if(!diffs.length&&wasOk)$('fixNote').innerHTML='当前参数附近已经是较优解，不需要调整。';
+    else $('fixNote').innerHTML+='<br>'+qual;
+    undoState=diffs.length?before:null;$('undoBtn').disabled=!undoState;delete btn.dataset.busy;renderChecks();
+    toast(ok?(wasOk?'已优化':'修正完成，全部通过'):'修正后仍有问题帧');
+  },40);
+});
+$('undoBtn').addEventListener('click',()=>{if(!undoState)return;S.params[S.type]=undoState.p;S.dur=undoState.dur;setMount(undoState.mount);S.gim=undoState.gim;undoState=null;take++;
+  buildParams();buildCommon();buildRig();recompile();tNow=0;$('fixNote').textContent='已撤销修正，恢复原设计。';});
+
+/* ---------- 时间线与曲线 ---------- */
+const strip=$('strip'),graph=$('graph'),stripBuf=document.createElement('canvas'),graphBuf=document.createElement('canvas');
+const DPR=()=>Math.min(devicePixelRatio||1,2);
+function fitCanvas(c,buf){const r=c.getBoundingClientRect(),d=DPR();c.width=buf.width=Math.max(1,Math.round(r.width*d));c.height=buf.height=Math.max(1,Math.round(r.height*d));}
+function drawStripBase(){fitCanvas(strip,stripBuf);const g=stripBuf.getContext('2d'),W=stripBuf.width,H=stripBuf.height,n=TRAJ.n,d=DPR();
+  g.fillStyle='#22262c';g.fillRect(0,0,W,H);
+  for(let i=0;i<n;i++){g.fillStyle=COLORS[sev(TRAJ.st[i])];const x0=Math.floor(i/n*W),x1=Math.ceil((i+1)/n*W);g.fillRect(x0,H*0.3,x1-x0,H*0.45);}
+  g.fillStyle='#5d636b';for(let s=0;s<=TRAJ.dur+1e-6;s+=1){const x=Math.round(s/TRAJ.dur*(W-d));g.fillRect(x,0,d,H*0.25);}
+}
+function drawGraphBase(){fitCanvas(graph,graphBuf);const g=graphBuf.getContext('2d'),W=graphBuf.width,H=graphBuf.height,n=TRAJ.n,d=DPR(),X0=36*d;
+  g.fillStyle='#1b1e23';g.fillRect(0,0,W,H);
+  let lo=Infinity,hi=-Infinity;TRAJ.qs.forEach(q=>q.slice(0,S.gimbalMode?8:6).forEach(v=>{lo=Math.min(lo,v*R2D);hi=Math.max(hi,v*R2D);}));
+  const pad=Math.max(10,(hi-lo)*0.08);lo-=pad;hi+=pad;const y=v=>H-6*d-(v-lo)/(hi-lo)*(H-12*d);
+  g.strokeStyle='#2e333a';g.lineWidth=d;g.font=`${10*d}px "JetBrains Mono", monospace`;g.fillStyle='#5d636b';
+  const step=[30,45,90,180].find(s=>(hi-lo)/s<=5)||360;
+  for(let v=Math.ceil(lo/step)*step;v<=hi;v+=step){const yy=Math.round(y(v))+0.5;g.beginPath();g.moveTo(X0,yy);g.lineTo(W,yy);g.stroke();g.fillText(v+'°',2*d,yy+3*d);}
+  // 问题区间底色
+  for(let i=0;i<n;i++){const s=sev(TRAJ.st[i]);if(s==='ok')continue;g.fillStyle=s==='err'?'rgba(229,72,77,.10)':'rgba(227,132,58,.10)';
+    const x0=X0+i/(n-1)*(W-X0);g.fillRect(x0,0,Math.ceil((W-X0)/(n-1))+1,H);}
+  const X=i=>X0+i/(n-1)*(W-X0);
+  const nj=S.gimbalMode?8:6;for(let j=0;j<nj;j++){g.strokeStyle=JCOL[j];g.lineWidth=1.5*d;g.setLineDash(j>=6?[5*d,3*d]:[]);g.beginPath();TRAJ.qs.forEach((q,i)=>{const xx=X(i),yy=y(q[j]*R2D);i?g.lineTo(xx,yy):g.moveTo(xx,yy);});g.stroke();}g.setLineDash([]);
+  graphBuf._X0=X0;
+}
+function drawOverlays(){
+  const d=DPR();let g=strip.getContext('2d');g.clearRect(0,0,strip.width,strip.height);g.drawImage(stripBuf,0,0);
+  const x=tNow/TRAJ.dur*(strip.width-2*d);g.fillStyle='#e8e5df';g.fillRect(Math.round(x),0,2*d,strip.height);
+  g=graph.getContext('2d');g.clearRect(0,0,graph.width,graph.height);g.drawImage(graphBuf,0,0);
+  const X0=graphBuf._X0||0,gx=X0+tNow/TRAJ.dur*(graph.width-X0-d);g.fillStyle='rgba(232,229,223,.85)';g.fillRect(Math.round(gx),0,d,graph.height);
+}
+function scrubFrom(e,c){const r=c.getBoundingClientRect(),x0=c===graph?(graphBuf._X0||0)/DPR():0;
+  const u=Math.max(0,Math.min(1,(e.clientX-r.left-x0)/(r.width-x0)));tNow=u*TRAJ.dur;setPlaying(false);}
+[strip,graph].forEach(c=>{let down=false;
+  c.addEventListener('pointerdown',e=>{down=true;c.setPointerCapture(e.pointerId);scrubFrom(e,c);});
+  c.addEventListener('pointermove',e=>{if(down)scrubFrom(e,c);});
+  c.addEventListener('pointerup',()=>{down=false;});c.addEventListener('pointercancel',()=>{down=false;});});
+
+/* ---------- 播放 ---------- */
+let tNow=0,playing=!matchMedia('(prefers-reduced-motion: reduce)').matches,last=performance.now();
+function setPlaying(p){playing=p;$('playIcon').innerHTML=p?'<rect x="2.5" y="1.5" width="3.2" height="11" fill="currentColor"/><rect x="8.3" y="1.5" width="3.2" height="11" fill="currentColor"/>':'<path d="M3 1.5v11l9-5.5z" fill="currentColor"/>';$('tally').classList.toggle('idle',!p);}
+$('play').addEventListener('click',()=>setPlaying(!playing));
+addEventListener('keydown',e=>{if(e.code==='Space'&&!/INPUT|SELECT|BUTTON/.test(document.activeElement.tagName)){e.preventDefault();setPlaying(!playing);}});
+function tc(t){const f=Math.floor(t*25+1e-6),ff=f%25,ss=Math.floor(f/25)%60,mm=Math.floor(f/1500);return `00:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}:${String(ff).padStart(2,'0')}`;}
+function tcShort(t){return `${String(Math.floor(t)).padStart(2,'0')}:${String(Math.round((t%1)*25)).padStart(2,'0')}`;}
+function sampleQ(t){const f=Math.max(0,Math.min(TRAJ.n-1,t/DT)),i=Math.min(TRAJ.n-2,Math.floor(f)),u=f-i;return TRAJ.qs[i].map((v,j)=>lerp(v,TRAJ.qs[i+1][j],u));}
+
+function resize(){const r=view.getBoundingClientRect();renderer.setSize(r.width,r.height,false);mainCam.aspect=r.width/Math.max(1,r.height);mainCam.updateProjectionMatrix();if(TRAJ){drawStripBase();drawGraphBase();}}
+new ResizeObserver(resize).observe(view);new ResizeObserver(()=>{if(TRAJ){drawStripBase();drawGraphBase();}}).observe(strip);
+
+let lastUi=0;
+function loop(now){
+  const dt=Math.min(0.1,(now-last)/1000);last=now;
+  if(playing&&TRAJ){tNow+=dt;if(tNow>TRAJ.dur)tNow=0;}
+  if(TRAJ){
+    const i=Math.round(Math.max(0,Math.min(TRAJ.n-1,tNow/DT)));
+    const q=sampleQ(tNow);updateRobot(q,TRAJ.cm[i]);controls.update();
+    const cr=canvas.getBoundingClientRect(),mr=monitor.getBoundingClientRect();
+    renderer.setScissorTest(false);renderer.setViewport(0,0,cr.width,cr.height);renderer.render(scene,mainCam);
+    pocket.visible=lensG.visible=pathLine.visible=tgt.visible=false;
+    vcam.aspect=16/9;vcam.updateProjectionMatrix();renderer.setRenderTarget(rt);renderer.render(scene,vcam);renderer.setRenderTarget(null);
+    const x=mr.left-cr.left,y=cr.bottom-mr.bottom;vcam.aspect=mr.width/mr.height;vcam.updateProjectionMatrix();
+    renderer.setScissorTest(true);renderer.setScissor(x,y,mr.width,mr.height);renderer.setViewport(x,y,mr.width,mr.height);renderer.render(scene,vcam);
+    renderer.setScissorTest(false);pocket.visible=lensG.visible=pathLine.visible=tgt.visible=true;
+    drawOverlays();
+    if(now-lastUi>80){lastUi=now;
+      $('tc').firstChild.nodeValue=tc(tNow);
+      const s=TRAJ.st[i],sv=sev(s),rs=Object.keys(K.BIT).filter(k=>s&K.BIT[k]).map(k=>LABEL[k]);
+      const parts=K.PART.filter((_,b)=>TRAJ.cm[i]&(1<<b));
+      const ms=$('monState');ms.className='mon-state '+sv;ms.textContent=rs.length?rs.join(' · '):'正常';
+      $('reason').textContent=rs.length?`第 ${i} 帧：${rs.join('、')}${parts.length?'（'+parts.join('、')+'）':''}`:`第 ${i} 帧：通过全部检查`;
+      renderJoints(q);}
+  }
+  requestAnimationFrame(loop);
+}
+
+/* ---------- 导出 ---------- */
+function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2000);}
+function copy(text,ok){(navigator.clipboard?navigator.clipboard.writeText(text):Promise.reject()).then(()=>toast(ok)).catch(()=>{
+  const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast(ok);}catch(e){toast('复制失败，请手动选择文本');}ta.remove();});}
+function csvText(){const rows=['t,j1,j2,j3,j4,j5,j6,gimbal_pan,gimbal_tilt'];TRAJ.qs.forEach((q,i)=>rows.push([(i*DT).toFixed(2),...q.map(v=>(v*R2D).toFixed(3))].join(',')));return rows.join('\n');}
+function download(name,text,type){try{const u=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);toast('已下载 '+name);}catch(e){toast('下载失败，请改用复制');}}
+const fileBase=()=>`nova-${S.type}-sc${String(presetIdx+1).padStart(2,'0')}-tk${String(take).padStart(2,'0')}`;
+$('copyCsv').addEventListener('click',()=>copy(csvText(),`已复制 ${TRAJ.n} 帧关节轨迹`));
+$('dlCsv').addEventListener('click',()=>download(fileBase()+'.csv',csvText(),'text/csv'));
+$('dlShot').addEventListener('click',()=>download(fileBase()+'.json',shotJson(),'application/json'));
+function shotJson(){return JSON.stringify({type:S.type,params:S.params[S.type],duration_s:S.dur,easing:S.ease,focal_mm:S.focal,speed_limit_pct:S.pct,pocket3_mount:K.MOUNTS[S.mount].name,gimbal:S.gimbalMode?{mode:'分担',pan_deg:[S.gim.p0,S.gim.p1],tilt_deg_down_positive:[S.gim.t0,S.gim.t1],duration_s:S.dur,easing:S.ease,command:'Pocket 3 BLE 带时长的绝对角度（cmdSet 0x04 / cmdId 0x14）'}:{mode:'锁定'},flip_footage_180:!!K.MOUNTS[S.mount].flip,product_m:PROD,target_m:TARGET},null,2);}
+$('copyShot').addEventListener('click',()=>copy(shotJson(),'已复制镜头参数'));
+
+buildSeg();buildPresets();applyPreset(0);setPlaying(playing);resize();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
