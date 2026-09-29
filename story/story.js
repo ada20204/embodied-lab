@@ -118,6 +118,7 @@
       const b = document.createElement('button'); b.type = 'button'; b.textContent = `${id} ${name}`;
       if (byAction[id]) b.className = 'ready'; else b.title = '这个动作的示意姿态还没做';
       b.addEventListener('click', () => {
+        stopMotion();
         $$('#actionChips button').forEach(x => x.classList.remove('active'));
         if (!byAction[id]) { hudSay.textContent = `「${name}」的示意姿态还没做。`; return; }
         b.classList.add('active'); override = { id: byAction[id], until: performance.now() + 4500 };
@@ -152,7 +153,7 @@
   /* ---------------- 交互：旋转、选中、手动控制关节 ---------------- */
   const orbit = { az: 0, el: 0, zoom: 1, taz: 0, tel: 0, tzoom: 1 };
   const manual = {};                 // 关节名 → 弧度；被手动控制的关节不再跟随动画
-  let freezeUntil = 0, animT = 0, sel = null, hov = null, hoverT = 0, curRoots = [], curPip = false, drag = null, lastCh = 0, inspT = 0;
+  let curPipCam = null, freezeUntil = 0, animT = 0, sel = null, hov = null, hoverT = 0, curRoots = [], curPip = false, drag = null, lastCh = 0, inspT = 0;
   const SEL_TINT = { c: [0.49, 0.77, 1], k: 0.62 }, HOV_TINT = { c: [1, 1, 1], k: 0.16 };
   const hintEl = $('#hint'); let hintGone = false;
   const hideHint = () => { if (!hintGone) { hintGone = true; hintEl.classList.add('gone'); } };
@@ -194,13 +195,13 @@
     if (curPip && g1) {
       const r = pipRect();
       if (x >= r[0] * W && x <= (r[0] + r[2]) * W && y >= r[1] * H && y <= (r[1] + r[3]) * H) {
-        const n = st.pick(x, y, { roots: [g1.root], camera: PIP_CAM, viewport: r }); if (n) return n;
+        const n = st.pick(x, y, { roots: [g1.root], camera: curPipCam || PIP_CAM, viewport: r }); if (n) return n;
       }
     }
     return st.pick(x, y, { roots: curRoots });
   }
 
-  function openPanel(id) { const p = $('#' + id); p.hidden = false; const b = $('#' + ({ lightPanel: 'lightBtn', ledPanel: 'ledBtn' }[id] || '')); if (b) b.setAttribute('aria-expanded', 'true'); hideHint(); }
+  function openPanel(id) { const p = $('#' + id); p.hidden = false; const b = $('#' + ({ lightPanel: 'lightBtn', ledPanel: 'ledBtn', motionPanel: 'motionBtn' }[id] || '')); if (b) b.setAttribute('aria-expanded', 'true'); hideHint(); }
   const insp = { box: $('#inspect'), title: $('#inspTitle'), sub: $('#inspSub'), ctl: $('#inspCtl'), slider: $('#inspSlider'), val: $('#inspVal'), range: $('#inspRange') };
   function select(n) {
     if (sel) setTint(sel.nodes, null);
@@ -229,7 +230,7 @@
   $('#inspReset').addEventListener('click', () => { if (sel && sel.name) { delete manual[sel.name]; syncSlider(true); } });
   $('#inspResetAll').addEventListener('click', () => { Object.keys(manual).forEach(k => delete manual[k]); syncSlider(true); });
   $$('[data-close]').forEach(b => b.addEventListener('click', () => {
-    const id = b.dataset.close; if (id === 'inspect') select(null); else { $('#' + id).hidden = true; const bb = { lightPanel: '#lightBtn', ledPanel: '#ledBtn' }[id]; if (bb) $(bb).setAttribute('aria-expanded', 'false'); }
+    const id = b.dataset.close; if (id === 'inspect') select(null); else { $('#' + id).hidden = true; const bb = { lightPanel: '#lightBtn', ledPanel: '#ledBtn', motionPanel: '#motionBtn' }[id]; if (bb) $(bb).setAttribute('aria-expanded', 'false'); }
   }));
 
   const tip = $('#tip');
@@ -381,6 +382,106 @@
     return { pos: [w[0] * k[0] + w[4] * k[1] + w[8] * k[2] + w[12], w[1] * k[0] + w[5] * k[1] + w[9] * k[2] + w[13], w[2] * k[0] + w[6] * k[1] + w[10] * k[2] + w[14]], col: c.map(v => v * 0.9) };
   }
 
+  /* ---------------- 动作库：播放开源的 G1 动作数据 ---------------- */
+  const MOTION_BASES = (() => {
+    const q = new URLSearchParams(location.search).get('motions');   // 仅供本地测试：指向另一个目录
+    const b = ['https://huggingface.co/datasets/lvhaidong/LAFAN1_Retargeting_Dataset/resolve/main/g1/', 'https://raw.githubusercontent.com/plusultra-maker/lafan-g1/main/g1/'];
+    return q ? [q.endsWith('/') ? q : q + '/'].concat(b) : b;
+  })();
+  const mot = { clip: null, name: '', t: 0, playing: false, speed: 1, follow: true, out: G1Motion.makeOut(), pose: {}, root0: null, loading: null, lastUi: 0 };
+  const mUI = { list: $('#clipList'), play: $('#mPlay'), stop: $('#mStop'), follow: $('#mFollow'), speed: $('#mSpeed'), t: $('#mT'), tv: $('#mTv'), status: $('#mStatus'), file: $('#mFile') };
+  const setMStatus = (msg, err) => { mUI.status.textContent = msg; mUI.status.classList.toggle('err', !!err); };
+  const fmtT = x => `${x.toFixed(1)} s`;
+
+  function syncMotionUI() {
+    const has = !!mot.clip;
+    mUI.play.disabled = !has; mUI.t.disabled = !has; mUI.stop.hidden = !has;
+    mUI.play.textContent = mot.playing ? '⏸ 暂停' : '▶ 播放';
+    if (has) { mUI.t.max = G1Motion.duration(mot.clip).toFixed(1); mUI.t.value = mot.t.toFixed(1); mUI.tv.textContent = fmtT(mot.t); }
+    $$('#clipList button').forEach(b => b.setAttribute('aria-pressed', String(has && b.dataset.id === mot.name)));
+  }
+  function startMotion(clip, name, srcText) {
+    if (!g1) { setMStatus('G1 模型还没加载好。', true); return; }
+    if (!mot.root0) mot.root0 = new Float32Array(g1.root.base);
+    mot.clip = clip; mot.name = name; mot.t = 0; mot.playing = true; syncMotionUI();
+    const cl = G1Motion.CLIPS.find(c => c.id === name);
+    setMStatus(`${cl ? cl.name : name} · ${clip.n} 帧 · ${fmtT(G1Motion.duration(clip))} · ${srcText}`);
+    hudGest.textContent = '动作库'; hudAct.textContent = 'LAFAN1 重定向'; hudSay.textContent = `播放：${cl ? cl.name : name}。这是开源动捕数据重定向到 G1 的关节轨迹。`;
+    if (CHAPTERS[S.ch].main !== 'g1') { const c2 = $('#c2'); if (c2) c2.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); }
+    hideHint();
+    if (mobile()) { $('#motionPanel').hidden = true; $('#motionBtn').setAttribute('aria-expanded', 'false'); }   // 手机上让出画面
+  }
+  function stopMotion() {
+    if (!mot.clip) return;
+    mot.clip = null; mot.name = ''; mot.playing = false;
+    if (g1 && mot.root0) g1.root.base = new Float32Array(mot.root0);
+    syncMotionUI(); setMStatus('已回到讲解。可以再选一个片段。');
+    setGesture(S.beat ? (S.beat.dataset.gesture || 'idle') : 'idle', S.beat ? (S.beat.dataset.say || '') : '');
+  }
+  async function fetchCsv(id) {
+    let lastErr = null;
+    for (const base of MOTION_BASES) {
+      const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 30000);
+      try {
+        const r = await fetch(base + id + '.csv', { signal: ac.signal });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return { text: await r.text(), host: new URL(base, location.href).host };
+      } catch (e) { lastErr = e; } finally { clearTimeout(timer); }
+    }
+    throw lastErr || new Error('没有可用的下载源');
+  }
+  async function selectClip(id) {
+    if (mot.loading === id) return;
+    mot.loading = id; const btn = $(`#clipList button[data-id="${id}"]`); if (btn) btn.setAttribute('aria-busy', 'true');
+    setMStatus('下载中……');
+    try {
+      const { text, host } = await fetchCsv(id);
+      if (mot.loading !== id) return;
+      startMotion(G1Motion.parseCsv(text), id, host);
+    } catch (e) {
+      const parse = /第 \d+ 行|文件是空/.test(e.message);
+      setMStatus(parse ? e.message : '下载失败（网络不通，或这个页面不允许访问外部站点）。可以从数据集下载 CSV，再点“选择 CSV 文件”或拖进页面。', true);
+    } finally { if (mot.loading === id) mot.loading = null; if (btn) btn.removeAttribute('aria-busy'); }
+  }
+  async function loadFile(file) {
+    try { startMotion(G1Motion.parseCsv(await file.text()), file.name.replace(/\.csv$/i, ''), '本地文件'); }
+    catch (e) { setMStatus(e.message, true); openPanel('motionPanel'); }
+  }
+  function buildMotion() {
+    G1Motion.CLIPS.forEach(c => {
+      const b = document.createElement('button'); b.type = 'button'; b.dataset.id = c.id; b.setAttribute('aria-pressed', 'false');
+      b.append(c.name); const sm = document.createElement('small'); sm.textContent = c.cat; b.appendChild(sm);
+      b.addEventListener('click', () => selectClip(c.id)); mUI.list.appendChild(b);
+    });
+    mUI.play.addEventListener('click', () => { if (!mot.clip) return; mot.playing = !mot.playing; syncMotionUI(); });
+    mUI.stop.addEventListener('click', stopMotion);
+    mUI.follow.addEventListener('change', () => { mot.follow = mUI.follow.checked; });
+    mUI.speed.addEventListener('change', () => { mot.speed = +mUI.speed.value; });
+    mUI.t.addEventListener('input', () => { if (mot.clip) { mot.t = +mUI.t.value; mUI.tv.textContent = fmtT(mot.t); } });
+    mUI.file.addEventListener('change', () => { const f = mUI.file.files[0]; if (f) loadFile(f); mUI.file.value = ''; });
+    $('#motionBtn').addEventListener('click', () => { const p = $('#motionPanel'); if (p.hidden) openPanel('motionPanel'); else { p.hidden = true; $('#motionBtn').setAttribute('aria-expanded', 'false'); } });
+    let dragDepth = 0;
+    addEventListener('dragenter', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { dragDepth++; document.body.classList.add('drag-over'); } });
+    addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) document.body.classList.remove('drag-over'); });
+    addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+    addEventListener('drop', e => { dragDepth = 0; document.body.classList.remove('drag-over'); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) { e.preventDefault(); loadFile(f); } });
+    syncMotionUI();
+  }
+  /** 每帧：推进时间、把根节点位姿和关节角写到 G1；返回镜头跟随的偏移 */
+  function updateMotion(dt) {
+    if (!mot.clip || !g1) return null;
+    const dur = G1Motion.duration(mot.clip);
+    if (mot.playing) { mot.t += dt * mot.speed; if (mot.t > dur) mot.t = 0; }
+    G1Motion.sample(mot.clip, mot.t, mot.out);
+    g1.root.base = Stage3D.M4.fromQT(mot.out.quat, mot.out.pos);
+    G1Motion.toPose(mot.out.q, mot.pose);
+    Object.assign(cur, mot.pose);     // 结束后讲解手势从当前姿态接着走
+    g1.set(Object.assign({}, mot.pose, manual));
+    const now = performance.now();
+    if (now - mot.lastUi > 150) { mot.lastUi = now; if (document.activeElement !== mUI.t) { mUI.t.value = mot.t.toFixed(1); } mUI.tv.textContent = fmtT(mot.t); }
+    return mot.follow ? [mot.out.pos[0], mot.out.pos[1]] : [0, 0];
+  }
+
   /* ---------------- 渲染循环 ---------------- */
   let prev = performance.now(), t0 = prev, visible = true;
   document.addEventListener('visibilitychange', () => { visible = !document.hidden; prev = performance.now(); });
@@ -390,6 +491,8 @@
     if (!st || !visible) return;
     const dt = Math.min(0.05, (now - prev) / 1000); prev = now; if (now > freezeUntil) animT += dt; const t = animT;
     const chc = CHAPTERS[S.ch] || CHAPTERS[0];
+
+    const mfx = updateMotion(dt), fx = mfx ? mfx[0] : 0, fy = mfx ? mfx[1] : 0;
 
     // 镜头：每章保持自己的镜头，只在章与章的交界处（前后各 Z）平滑过渡；交界处两边各占一半，保证连续
     const Z = 0.14, N = CHAPTERS.length, ch = clamp(S.ch, 0, N - 1), own = camFor(CHAPTERS[ch].cam);
@@ -401,11 +504,12 @@
     if (!(drag && drag.moved)) { orbit.az += (orbit.taz - orbit.az) * kO; orbit.el += (orbit.tel - orbit.el) * kO; }
     orbit.zoom += (orbit.tzoom - orbit.zoom) * kO;
     cam.az += orbit.az; cam.el = clamp(cam.el + orbit.el, -0.12, 1.3); cam.dist *= orbit.zoom;
+    if (mfx && chc.main === 'g1') cam.target = [cam.target[0] + fx, cam.target[1] + fy, cam.target[2]];   // 不改共享的镜头常量
     Object.assign(st.camera, cam);
 
     // 讲解员
     if (override && performance.now() > override.until) override = null;
-    if (g1) {
+    if (g1 && !mot.clip) {
       const target = G1Poses.poseFor(override ? override.id : gesture, reduce ? 0 : t);
       if (!reduce) target.waist_pitch_joint = 0.025 * Math.sin(t * 1.3);
       G1Poses.approach(cur, target, dt, 5.5);
@@ -422,13 +526,14 @@
     if (wantDuck) roots.push(duck.root);
     st.shadows.length = 0;
     if (wantDuck) st.shadows.push({ c: [0, 0], r: 0.13 });
-    if (wantG1) st.shadows.push({ c: [0, 0], r: 0.55 });
+    if (wantG1) st.shadows.push({ c: [fx, fy], r: 0.55 });
     if (wantNova) st.shadows.push({ c: [0, 0], r: 0.95 });
     curRoots = roots; curPip = !!(chc.pip && g1 && innerWidth >= (chc.pipMinW || 0));
     const glow = updateLed(performance.now()) || undefined;
-    st.render({ roots, glow: wantG1 ? glow : undefined });
+    curPipCam = (fx || fy) ? Object.assign({}, PIP_CAM, { target: [PIP_CAM.target[0] + fx, PIP_CAM.target[1] + fy, PIP_CAM.target[2]] }) : PIP_CAM;
+    st.render({ roots, glow: wantG1 ? glow : undefined, gridCenter: wantG1 ? [fx, fy] : undefined });
     if (sel && now - inspT > 200) { inspT = now; syncSlider(false); }
-    if (chc.pip && g1 && innerWidth >= (chc.pipMinW || 0)) st.render({ roots: [g1.root], camera: PIP_CAM, viewport: pipRect(), clearColor: false, grid: false, glow });
+    if (chc.pip && g1 && innerWidth >= (chc.pipMinW || 0)) st.render({ roots: [g1.root], camera: curPipCam, viewport: pipRect(), clearColor: false, grid: false, glow });
   }
 
   /* ---------------- 章节导航、卡片出现、当前节 ---------------- */
@@ -443,7 +548,7 @@
       $$('.dots a').forEach(a => a.classList.toggle('on', +a.dataset.go === S.ch));
       if (S.beat && S.beat !== lastBeat) {
         lastBeat = S.beat;
-        if (!override) setGesture(S.beat.dataset.gesture || 'idle', S.beat.dataset.say || '');
+        if (!override && !mot.clip) setGesture(S.beat.dataset.gesture || 'idle', S.beat.dataset.say || '');
       }
     });
   }
@@ -479,10 +584,10 @@
   /* ---------------- 启动 ---------------- */
   computeScroll(); onScroll();
   setGesture('wave', $('.beat').dataset.say || '');
-  buildLight(); buildLed();
+  buildLight(); buildLed(); buildMotion();
   loadModels().finally(() => { indexJoints(); $('#loading').classList.add('done'); });
   requestAnimationFrame(frame);
 
   // 供本地测试使用
-  window.__story = { get state() { return { ch: S.ch, p: S.p, gesture, nova: !!nova, g1: !!g1, duck: !!duck, sel: sel && { model: sel.model, name: sel.name, label: sel.label }, manual: Object.assign({}, manual), light: st && Object.assign({}, st.light), orbit: Object.assign({}, orbit) }; }, MATRIX, pickAt, select, led, setLed, orbit };
+  window.__story = { mot, selectClip, get state() { return { motion: mot.clip ? { name: mot.name, t: +mot.t.toFixed(2), n: mot.clip.n, playing: mot.playing } : null, ch: S.ch, p: S.p, gesture, nova: !!nova, g1: !!g1, duck: !!duck, sel: sel && { model: sel.model, name: sel.name, label: sel.label }, manual: Object.assign({}, manual), light: st && Object.assign({}, st.light), orbit: Object.assign({}, orbit) }; }, MATRIX, pickAt, select, led, setLed, orbit };
 })();

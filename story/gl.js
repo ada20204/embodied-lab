@@ -143,10 +143,10 @@
   const PFS = `#version 300 es
   precision highp float; uniform vec4 uId; out vec4 o; void main(){ o = uId; }`;
   const GVS = `#version 300 es
-  in vec3 aPos; uniform mat4 uVP; out vec3 vW; out vec2 vUV; void main(){ vW=aPos; gl_Position=uVP*vec4(aPos,1.0); }`;
+  in vec3 aPos; uniform mat4 uVP; uniform vec2 uOff; out vec3 vW; out vec2 vUV; void main(){ vec3 p=aPos+vec3(uOff,0.0); vW=p; gl_Position=uVP*vec4(p,1.0); }`;
   const GFS = `#version 300 es
-  precision highp float; in vec3 vW; uniform vec3 uCol; uniform float uR; out vec4 o;
-  void main(){ float d=length(vW.xy); float a=(1.0-smoothstep(uR*0.35,uR,d))*0.55; o=vec4(uCol,a); }`;
+  precision highp float; in vec3 vW; uniform vec3 uCol; uniform float uR; uniform vec2 uCen; out vec4 o;
+  void main(){ float d=length(vW.xy-uCen); float a=(1.0-smoothstep(uR*0.35,uR,d))*0.55; o=vec4(uCol,a); }`;
   const SFS = `#version 300 es
   precision highp float; in vec3 vW; uniform vec3 uCol; uniform vec2 uC; uniform float uR; out vec4 o;
   void main(){ float d=length(vW.xy-uC)/uR; float a=(1.0-smoothstep(0.0,1.0,d)); o=vec4(uCol,a*a*0.6); }`;
@@ -315,11 +315,13 @@
         const roots = o.roots || st.roots, showGrid = o.grid !== undefined ? o.grid : st.grid;
         // 地面
         if (showGrid) {
+          const gc = o.gridCenter || [0, 0], gstep = 0.25;   // 网格按格距取整，线条看起来固定在世界里；淡出以真实中心为准
           gl.useProgram(GP); gl.uniformMatrix4fv(gl.getUniformLocation(GP, 'uVP'), false, vp);
+          gl.uniform2f(gl.getUniformLocation(GP, 'uOff'), Math.round(gc[0] / gstep) * gstep, Math.round(gc[1] / gstep) * gstep); gl.uniform2f(gl.getUniformLocation(GP, 'uCen'), gc[0], gc[1]);
           gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
           gl.uniform3f(gl.getUniformLocation(GP, 'uCol'), 0.30, 0.38, 0.46); gl.uniform1f(gl.getUniformLocation(GP, 'uR'), 3.4);
           gl.bindVertexArray(gridVao); gl.drawArrays(gl.LINES, 0, gridN);
-          gl.useProgram(SP); gl.uniformMatrix4fv(gl.getUniformLocation(SP, 'uVP'), false, vp);
+          gl.useProgram(SP); gl.uniformMatrix4fv(gl.getUniformLocation(SP, 'uVP'), false, vp); gl.uniform2f(gl.getUniformLocation(SP, 'uOff'), gc[0], gc[1]);
           gl.uniform3f(gl.getUniformLocation(SP, 'uCol'), 0, 0, 0);
           gl.bindVertexArray(quadVao);
           st.shadows.forEach(s => { gl.uniform2f(gl.getUniformLocation(SP, 'uC'), s.c[0], s.c[1]); gl.uniform1f(gl.getUniformLocation(SP, 'uR'), s.r); gl.drawArrays(gl.TRIANGLES, 0, 6); });

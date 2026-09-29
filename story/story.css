@@ -187,3 +187,14 @@ input[type=range]{width:100%;accent-color:var(--accent);min-width:0}
 .led-step{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--text);min-height:1.5em}
 .led-step small{display:block;font:11px var(--mono);color:var(--dim)}
 .swatch{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1px solid rgba(255,255,255,.25)}
+
+/* 动作库 */
+#motionPanel .presets button small{color:var(--dim);margin-left:4px}
+#motionPanel .presets button[aria-busy="true"]{opacity:.6}
+#motionPanel .row label.mini{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+#motionPanel select{font:12px var(--sans);color:var(--text);background:transparent;border:0}
+#motionPanel select option{color:#000}
+#motionPanel .mini:disabled{opacity:.45;cursor:default}
+#motionPanel .sl.mt{margin-top:10px;grid-template-columns:3em 1fr 4.6em}
+#motionPanel .led-step.err{color:var(--fail)}
+body.drag-over::after{content:"松开以载入 CSV";position:fixed;inset:12px;z-index:40;display:flex;align-items:center;justify-content:center;border:2px dashed var(--accent);border-radius:16px;background:rgba(14,16,19,.7);color:var(--text);font-size:18px;pointer-events:none}

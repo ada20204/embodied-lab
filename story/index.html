@@ -20,6 +20,7 @@
     <a href="#c4" data-go="4"><i></i><span>平台矩阵</span></a>
     <a href="#c5" data-go="5"><i></i><span>副线</span></a>
   </nav>
+  <button id="motionBtn" class="voice" type="button" aria-expanded="false" aria-controls="motionPanel">动作库</button>
   <button id="ledBtn" class="voice" type="button" aria-expanded="false" aria-controls="ledPanel">指示灯</button>
   <button id="lightBtn" class="voice" type="button" aria-expanded="false" aria-controls="lightPanel">灯光</button>
   <button id="voice" class="voice" type="button" aria-pressed="false" title="让讲解员朗读（默认静音）">🔇 朗读</button>
@@ -42,6 +43,21 @@
     </div>
     <div class="sliders" id="lightSliders"></div>
     <div class="row"><button type="button" id="lightReset" class="mini">恢复默认</button></div>
+  </section>
+  <section id="motionPanel" class="panel" hidden aria-label="动作库">
+    <header><b>动作库 · G1</b><button type="button" class="x" data-close="motionPanel" aria-label="关闭动作库">×</button></header>
+    <div class="presets" id="clipList" role="group" aria-label="动作片段"></div>
+    <div class="row">
+      <button type="button" id="mPlay" class="mini" disabled>▶ 播放</button>
+      <button type="button" id="mStop" class="mini" hidden>■ 回到讲解</button>
+      <label class="mini"><input type="checkbox" id="mFollow" checked> 镜头跟随</label>
+      <label class="mini">速度 <select id="mSpeed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+    </div>
+    <div class="sl mt"><label for="mT">进度</label><input id="mT" type="range" min="0" max="1" step="0.1" value="0" disabled><output id="mTv">0 s</output></div>
+    <p class="led-step" id="mStatus" aria-live="polite">选一个片段。数据会在这时从源站下载（约 1–2 MB）。</p>
+    <div class="row"><label class="mini">选择 CSV 文件<input type="file" id="mFile" accept=".csv,text/csv" hidden></label><span class="insp-range">也可以把 CSV 拖进页面。只支持 G1 的 36 列格式。</span></div>
+    <p class="insp-range">动作来自 Unitree 重定向的 LAFAN1 数据集（G1，30 FPS）。原始动捕是 Ubisoft 的 LAFAN1（CC BY-NC-ND 4.0），本页<b>不内置也不再分发</b>数据，只在播放时下载。重定向只考虑了运动学，真机不一定做得到。
+      <a href="https://huggingface.co/datasets/lvhaidong/LAFAN1_Retargeting_Dataset" rel="noopener">数据集</a> · <a href="https://github.com/ubisoft/ubisoft-laforge-animation-dataset" rel="noopener">LAFAN1</a></p>
   </section>
   <section id="ledPanel" class="panel" hidden aria-label="头部指示灯">
     <header><b>头部指示灯</b><button type="button" class="x" data-close="ledPanel" aria-label="关闭指示灯面板">×</button></header>
@@ -156,7 +172,7 @@
         <li>唤醒词</li><li>VAD 断句</li><li>ASR</li><li>大模型回复</li><li>TTS · 灯光 · 预设动作</li>
       </ol>
       <p>动作不由模型直接控制关节：回复先过一层<b>动作白名单</b>，再经 Jetson 中继下发给 G1。</p>
-      <p class="meta">头部指示灯也由管线控制：红＝聆听，蓝＝回复。<button type="button" class="mini" data-open="ledPanel">试试指示灯</button></p>
+      <p class="meta">头部指示灯也由管线控制：红＝聆听，蓝＝回复。<button type="button" class="mini" data-open="ledPanel">试试指示灯</button> <button type="button" class="mini" data-open="motionPanel">动作库：播放开源动作</button></p>
       <div class="credit">
         <b>参考项目</b> · 西交利物浦具身智能实验室 · <a href="https://github.com/AlinaYuhan/g1-voice-interaction-pipeline" rel="noopener">AlinaYuhan/g1-voice-interaction-pipeline</a>
         <p class="mine">我的贡献：<span>（待补充）</span></p>
@@ -242,6 +258,7 @@
 <script src="gl.js"></script>
 <script src="g1-poses.js"></script>
 <script src="g1-led.js"></script>
+<script src="motion.js"></script>
 <script src="g1-model.js"></script>
 <script src="nova-model.js"></script>
 <script src="story.js"></script>
