@@ -16,8 +16,9 @@
     <a href="#c0" data-go="0"><i></i><span>开场</span></a>
     <a href="#c1" data-go="1"><i></i><span>双臂与 ACT</span></a>
     <a href="#c2" data-go="2"><i></i><span>G1 语音</span></a>
-    <a href="#c3" data-go="3"><i></i><span>平台矩阵</span></a>
-    <a href="#c4" data-go="4"><i></i><span>副线</span></a>
+    <a href="#c3" data-go="3"><i></i><span>小鸭子</span></a>
+    <a href="#c4" data-go="4"><i></i><span>平台矩阵</span></a>
+    <a href="#c5" data-go="5"><i></i><span>副线</span></a>
   </nav>
   <button id="ledBtn" class="voice" type="button" aria-expanded="false" aria-controls="ledPanel">指示灯</button>
   <button id="lightBtn" class="voice" type="button" aria-expanded="false" aria-controls="lightPanel">灯光</button>
@@ -173,11 +174,37 @@
   </div>
 </section>
 
-<!-- ============ 3 平台矩阵 ============ -->
-<section class="chap wide" id="c3" data-ch="3">
+<!-- ============ 3 小鸭子 ============ -->
+<section class="chap" id="c3" data-ch="3">
+  <div class="beat" data-gesture="wave" data-say="这是 Microduck，一只 25 厘米的开源小鸭子。我来给你介绍一下。">
+    <div class="card">
+      <p class="kicker">06 · 小鸭子 · 开源双足</p>
+      <h2>一只用强化学习走路的小鸭子</h2>
+      <p>Microduck 是 Pollen Robotics 和 Hugging Face 的开源双足机器人，约 25 cm、800 g。它板上的 Rockchip RK3566 以 50 Hz 跑神经网络策略，驱动 15 个舵机。</p>
+      <p>屏幕上是它走路版的关节模型（14 个关节）：<b>拖动旋转，点任意部件，再用滑块摆关节</b>。</p>
+      <p class="meta"><em class="b b-demo">示意</em> 头部的小动作是我手工做的，<b>不是它的强化学习策略</b>；页面里没有物理仿真。</p>
+      <div class="credit">
+        <b>模型来源</b> · <a href="https://github.com/pollen-robotics/microduck_rl" rel="noopener">pollen-robotics/microduck_rl</a>（Apache-2.0，已抽稀）
+        <p class="mine">机器人和策略都出自 Pollen Robotics。我读了它的训练栈，笔记在这里：<a href="../index.html#/notes/01-microduck-rl">Microduck 的强化学习训练栈</a>。</p>
+      </div>
+    </div>
+  </div>
+  <div class="beat" data-gesture="present" data-say="官方还有个网页仿真：在浏览器里直接让小鸭子走起来。">
+    <div class="card">
+      <p class="kicker">07 · 从仿真到端侧</p>
+      <h2>仿真里训，导出 ONNX，再放到板子上</h2>
+      <p>它的策略在 MuJoCo 里用 PPO 训练，导出 ONNX，再放到板子上以 50 Hz 推理，和端侧部署是同一条路。我在笔记里记下的一条是：sim2real 的差距大半来自执行器，所以要给舵机建模，再做域随机化。</p>
+      <p>Hugging Face 上的官方网页仿真 <b>Microduck Sandbox</b> 把这套东西放进了浏览器：MuJoCo 编译成 WebAssembly 做物理，ONNX Runtime 做策略推理，键盘或手柄就能开它。</p>
+      <p class="cta"><a class="btn" href="https://huggingface.co/spaces/pollen-robotics/microduck-simulator" rel="noopener">打开 Microduck Sandbox</a> <a class="btn ghost" href="https://github.com/pollen-robotics/microduck" rel="noopener">看源码</a></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 平台矩阵 ============ -->
+<section class="chap wide" id="c4" data-ch="4">
   <div class="beat" data-gesture="present" data-say="这一章最重要：每个案例做到哪一步，哪里没过。">
     <div class="card wide-card">
-      <p class="kicker">06 · 端侧平台矩阵</p>
+      <p class="kicker">08 · 端侧平台矩阵</p>
       <h2>做到哪一步，哪里没过</h2>
       <p id="matrixSummary" class="summary"></p>
       <div class="filters" id="matrixFilters" role="group" aria-label="筛选">
@@ -196,16 +223,16 @@
   </div>
 </section>
 
-<!-- ============ 4 副线 ============ -->
-<section class="chap" id="c4" data-ch="4">
+<!-- ============ 5 副线 ============ -->
+<section class="chap" id="c5" data-ch="5">
   <div class="beat" data-gesture="wave" data-say="最后一个是副线。谢谢你看到这里。">
     <div class="card">
-      <p class="kicker">07 · 副线</p>
+      <p class="kicker">09 · 副线</p>
       <h2>影视运镜预演台</h2>
       <p>用 Nova 挂 Pocket 3 拍产品，能在浏览器里设计运镜，逐帧检查干涉、限位、速度、加速度和奇异，并自动修正。</p>
       <p class="meta"><em class="b b-sim">仿真</em> 近似参数，尚未上真机。</p>
       <p class="cta"><a class="btn" href="../previz/">打开预演台</a> <a class="btn ghost" href="../index.html">读笔记</a></p>
-      <p class="fine">本页与 Claude（Anthropic）协作完成。宇树（Unitree）、越疆（Dobot）、DJI 等名称归各自所有者，与本页无关。G1 模型来自 MuJoCo Menagerie（BSD-3-Clause，© Unitree Robotics），已抽稀，见 <a href="../assets/g1/NOTICE.md">NOTICE</a>。</p>
+      <p class="fine">本页与 Claude（Anthropic）协作完成。宇树（Unitree）、越疆（Dobot）、DJI 等名称归各自所有者，与本页无关。G1 模型来自 MuJoCo Menagerie（BSD-3-Clause，© Unitree Robotics），已抽稀，见 <a href="../assets/g1/NOTICE.md">NOTICE</a>。Microduck 模型来自 Pollen Robotics 的 microduck_rl（Apache-2.0），已抽稀，见 <a href="../assets/duck/NOTICE.md">NOTICE</a>。</p>
     </div>
   </div>
 </section>

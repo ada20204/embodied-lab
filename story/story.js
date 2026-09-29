@@ -30,7 +30,7 @@
   let st = null;
   try { st = window.Stage3D.create(canvas); } catch (e) { console.warn('WebGL 初始化失败', e); }
   if (!st) { $('#nogl').hidden = false; document.body.classList.add('nogl-on'); }
-  let g1 = null, nova = null;
+  let g1 = null, nova = null, duck = null;
 
   const fetchBuf = u => fetch(u).then(r => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.arrayBuffer(); });
   const fetchJson = u => fetch(u).then(r => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); });
@@ -45,8 +45,11 @@
         // 台面偏亮，压暗一点，不抢主体
         const plat = nova.root.byName.platform; if (plat) plat.color = [0.42, 0.45, 0.50];
       });
-    await Promise.allSettled([a, b]);
+    const c = Promise.all([fetchBuf('../assets/duck/duck.glb'), fetchJson('../assets/duck/duck.json')])
+      .then(([bf, s]) => { duck = G1Model.build(st, Stage3D.parseGLB(bf), s); });   // 同样是 MuJoCo 关节树，直接复用
+    await Promise.allSettled([a, b, c]);
     if (!g1) console.warn('G1 模型加载失败');
+    if (!duck) { document.body.classList.add('no-duck'); console.info('小鸭子模型不可用：小鸭子章节只显示文字'); }
     if (!nova) { document.body.classList.add('no-nova'); console.info('Nova 模型不可用：双臂章节只显示文字'); }
   }
 
@@ -55,12 +58,14 @@
     g1: { target: [0, 0, 0.70], dist: 3.0, az: Math.PI / 2 + 0.30, el: 0.10, fov: 32, sx: 0.26, sy: 0 },
     g1b: { target: [0, 0, 0.70], dist: 2.6, az: Math.PI / 2 - 0.25, el: 0.08, fov: 32, sx: 0.26, sy: 0 },
     nova: { target: [0, 0, 0.52], dist: 3.9, az: 0.85, el: 0.24, fov: 32, sx: 0.08, sy: 0 },
+    duck: { mk: 2.1, msy: 0.36, target: [0, 0, 0.135], dist: 0.95, az: 0.95, el: 0.16, fov: 32, sx: 0.14, sy: 0 },
     novaFar: { target: [0, 0, 0.52], dist: 4.6, az: 1.3, el: 0.30, fov: 32, sx: 0, sy: 0 },
   };
   const CHAPTERS = [
     { cam: 'g1', main: 'g1' },
     { cam: 'nova', main: 'nova', pip: true },
     { cam: 'g1b', main: 'g1' },
+    { cam: 'duck', main: 'duck', pip: true },
     { cam: 'novaFar', main: 'nova', pip: true, dim: true, pipMinW: 1180 },
     { cam: 'nova', main: 'nova', pip: true },
   ];
@@ -69,7 +74,7 @@
 
   function camFor(name) {
     const c = CAM[name], m = mobile();
-    return Object.assign({}, c, { sx: m ? 0 : c.sx, sy: m ? 0.20 * (c.sx ? 1 : 0.4) : c.sy, dist: m ? c.dist * 1.25 : c.dist });
+    return Object.assign({}, c, { sx: m ? 0 : c.sx, sy: m ? (c.msy !== undefined ? c.msy : 0.20 * (c.sx ? 1 : 0.4)) : c.sy, dist: m ? c.dist * (c.mk || 1.25) : c.dist });
   }
   function blendCam(a, b, k) {
     return { target: a.target.map((v, i) => lerp(v, b.target[i], k)), dist: lerp(a.dist, b.dist, k), az: lerp(a.az, b.az, k), el: lerp(a.el, b.el, k), fov: lerp(a.fov, b.fov, k), sx: lerp(a.sx, b.sx, k), sy: lerp(a.sy, b.sy, k) };
@@ -138,6 +143,12 @@
   }
 
 
+  /* ---------------- 小鸭子：头部的示意动作（不是强化学习策略） ---------------- */
+  function duckPose(p, t) {
+    const ph = t * 0.7 + p * 2.5;
+    return { head_yaw: 0.75 * Math.sin(ph) * Math.cos(ph * 0.37), head_pitch: -0.12 + 0.16 * Math.sin(ph * 1.3 + 0.8), neck_pitch: 0.06 * Math.sin(ph * 0.9), head_roll: 0.14 * Math.sin(ph * 0.6 + 2) };
+  }
+
   /* ---------------- 交互：旋转、选中、手动控制关节 ---------------- */
   const orbit = { az: 0, el: 0, zoom: 1, taz: 0, tel: 0, tzoom: 1 };
   const manual = {};                 // 关节名 → 弧度；被手动控制的关节不再跟随动画
@@ -148,12 +159,14 @@
   setTimeout(hideHint, 12000);
   const deg = r => r * 180 / Math.PI, rad = d => d * Math.PI / 180;
   const jointOf = n => { while (n && !n.axis) n = n.parent; return n; };
-  const modelOf = n => { while (n && n.parent) n = n.parent; return (g1 && n === g1.root) ? 'g1' : (nova && n === nova.root) ? 'nova' : null; };
-  const G1_PART = { hip_pitch: '髋俯仰', hip_roll: '髋滚转', hip_yaw: '髋偏航', knee: '膝', ankle_pitch: '踝俯仰', ankle_roll: '踝滚转', waist_yaw: '腰偏航', waist_roll: '腰滚转', waist_pitch: '腰俯仰', shoulder_pitch: '肩俯仰', shoulder_roll: '肩滚转', shoulder_yaw: '肩偏航', elbow: '肘', wrist_roll: '腕滚转', wrist_pitch: '腕俯仰', wrist_yaw: '腕偏航' };
+  const modelOf = n => { while (n && n.parent) n = n.parent; return (g1 && n === g1.root) ? 'g1' : (duck && n === duck.root) ? 'duck' : (nova && n === nova.root) ? 'nova' : null; };
+  const MODEL_NAME = { g1: '宇树 G1', nova: '越疆 Nova5 双臂', duck: 'Microduck（Pollen Robotics）' };
+  const G1_PART = { hip_pitch: '髋俯仰', hip_roll: '髋滚转', hip_yaw: '髋偏航', knee: '膝', ankle_pitch: '踝俯仰', ankle_roll: '踝滚转', waist_yaw: '腰偏航', waist_roll: '腰滚转', waist_pitch: '腰俯仰', shoulder_pitch: '肩俯仰', shoulder_roll: '肩滚转', shoulder_yaw: '肩偏航', elbow: '肘', wrist_roll: '腕滚转', wrist_pitch: '腕俯仰', wrist_yaw: '腕偏航', ankle: '踝', neck_pitch: '颈俯仰', head_pitch: '头俯仰', head_yaw: '头偏航', head_roll: '头滚转' };
   const jointNames = new Map();      // 节点 → 关节名
   function indexJoints() {
     if (g1) Object.keys(g1.joints).forEach(k => jointNames.set(g1.joints[k], k));
     if (nova) Object.keys(nova.joints).forEach(k => jointNames.set(nova.joints[k], k));
+    if (duck) Object.keys(duck.joints).forEach(k => jointNames.set(duck.joints[k], k));
   }
   function labelOf(name, model) {
     if (model === 'nova') return (name[0] === 'L' ? '左' : '右') + '臂 ' + name.slice(2);
@@ -164,15 +177,15 @@
   const axisOf = a => ['X', 'Y', 'Z'][[0, 1, 2].sort((i, j) => Math.abs(a[j]) - Math.abs(a[i]))[0]];
   function hlNodes(n) {
     if (n.isLed) return [n];
-    if (modelOf(n) === 'g1') { const b = n.isGeom ? n.parent : n; return b ? b.children.filter(c => c.isGeom) : [n]; }
+    if (modelOf(n) === 'g1' || modelOf(n) === 'duck') { const b = n.isGeom ? n.parent : n; return b ? b.children.filter(c => c.isGeom) : [n]; }
     return [jointOf(n) || n];
   }
   const setTint = (list, t) => list.forEach(x => { x.tintSelf = t; });
   const nodeInfo = n => {
     if (n.isLed) return { model: 'g1', joint: null, name: null, label: '头部指示灯（示意位置）' };
-    const model = modelOf(n), j = model === 'g1' ? jointOf(n.isGeom ? n.parent : n) : jointOf(n);
+    const model = modelOf(n), j = model !== 'nova' ? jointOf(n.isGeom ? n.parent : n) : jointOf(n);
     const name = j ? jointNames.get(j) : null;
-    return { model, joint: j, name, label: name ? labelOf(name, model) : (model === 'g1' ? '骨盆（浮动基座）' : (n.name || '部件')) };
+    return { model, joint: j, name, label: name ? labelOf(name, model) : (model === 'g1' ? '骨盆（浮动基座）' : model === 'duck' ? '躯干（浮动基座）' : (n.name || '部件')) };
   };
 
   function pickAt(x, y) {
@@ -196,7 +209,7 @@
     const info = nodeInfo(n); sel = Object.assign({ nodes: hlNodes(n) }, info);
     setTint(sel.nodes, SEL_TINT);
     insp.box.hidden = false; insp.title.textContent = info.label;
-    insp.sub.textContent = (info.model === 'g1' ? '宇树 G1' : '越疆 Nova5 双臂') + (info.name ? ' · ' + info.name : '');
+    insp.sub.textContent = (MODEL_NAME[info.model] || '') + (info.name ? ' · ' + info.name : '');
     insp.ctl.hidden = !info.joint;
     if (info.joint) {
       const r = info.joint.range || [-Math.PI, Math.PI];
@@ -378,11 +391,11 @@
     const dt = Math.min(0.05, (now - prev) / 1000); prev = now; if (now > freezeUntil) animT += dt; const t = animT;
     const chc = CHAPTERS[S.ch] || CHAPTERS[0];
 
-    // 镜头：章节内保持，靠近边界时混合
-    const k = Math.round(S.u), d = S.u - k, Z = 0.14;
-    let cam;
-    if (Math.abs(d) < Z && k > 0 && k < CHAPTERS.length) cam = blendCam(camFor(CHAPTERS[k - 1].cam), camFor(CHAPTERS[k].cam), smooth(clamp((d + Z) / (2 * Z), 0, 1)));
-    else cam = camFor(CHAPTERS[clamp(k, 0, CHAPTERS.length - 1)].cam);
+    // 镜头：每章保持自己的镜头，只在章与章的交界处（前后各 Z）平滑过渡；交界处两边各占一半，保证连续
+    const Z = 0.14, N = CHAPTERS.length, ch = clamp(S.ch, 0, N - 1), own = camFor(CHAPTERS[ch].cam);
+    let cam = own;
+    if (ch > 0 && S.p < Z) cam = blendCam(camFor(CHAPTERS[ch - 1].cam), own, smooth(0.5 + S.p / (2 * Z)));
+    else if (ch < N - 1 && S.p > 1 - Z) cam = blendCam(own, camFor(CHAPTERS[ch + 1].cam), smooth((S.p - (1 - Z)) / (2 * Z)));
     if (!reduce) cam.az += Math.sin(S.p * Math.PI) * 0.12;
     const kO = 1 - Math.exp(-8 * dt);
     if (!(drag && drag.moved)) { orbit.az += (orbit.taz - orbit.az) * kO; orbit.el += (orbit.tel - orbit.el) * kO; }
@@ -399,13 +412,16 @@
       g1.set(Object.assign({}, cur, manual));
     }
     if (nova) nova.set(Object.assign(novaPose(S.p + S.ch * 0.3, t), manual));
+    if (duck) duck.set(Object.assign(reduce ? {} : duckPose(S.p, t), manual));
 
     // 哪些模型在主视口
-    const wantNova = chc.main === 'nova' && nova, wantG1 = chc.main === 'g1' && g1;
+    const wantNova = chc.main === 'nova' && nova, wantG1 = chc.main === 'g1' && g1, wantDuck = chc.main === 'duck' && duck;
     const roots = [];
     if (wantNova) { nova.root.tint = chc.dim ? { c: [0.05, 0.06, 0.09], k: 0.62 } : null; roots.push(nova.root); }
     if (wantG1) roots.push(g1.root);
+    if (wantDuck) roots.push(duck.root);
     st.shadows.length = 0;
+    if (wantDuck) st.shadows.push({ c: [0, 0], r: 0.13 });
     if (wantG1) st.shadows.push({ c: [0, 0], r: 0.55 });
     if (wantNova) st.shadows.push({ c: [0, 0], r: 0.95 });
     curRoots = roots; curPip = !!(chc.pip && g1 && innerWidth >= (chc.pipMinW || 0));
@@ -468,5 +484,5 @@
   requestAnimationFrame(frame);
 
   // 供本地测试使用
-  window.__story = { get state() { return { ch: S.ch, p: S.p, gesture, nova: !!nova, g1: !!g1, sel: sel && { model: sel.model, name: sel.name, label: sel.label }, manual: Object.assign({}, manual), light: st && Object.assign({}, st.light), orbit: Object.assign({}, orbit) }; }, MATRIX, pickAt, select, led, setLed, orbit };
+  window.__story = { get state() { return { ch: S.ch, p: S.p, gesture, nova: !!nova, g1: !!g1, duck: !!duck, sel: sel && { model: sel.model, name: sel.name, label: sel.label }, manual: Object.assign({}, manual), light: st && Object.assign({}, st.light), orbit: Object.assign({}, orbit) }; }, MATRIX, pickAt, select, led, setLed, orbit };
 })();
