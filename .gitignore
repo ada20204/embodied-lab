@@ -1,2 +1,4 @@
 .DS_Store
 node_modules/
+# 来源与许可未确认的资源：确认前不要提交到公开仓库
+assets/nova/

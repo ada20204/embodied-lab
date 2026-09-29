@@ -25,6 +25,8 @@ jobs:
           node-version: 22
       - name: 运动学回归测试
         run: node --test tests/kin.test.mjs
+      - name: 讲解员姿态与 G1 资源测试
+        run: node --test tests/g1-story.test.mjs
 
   deploy:
     if: github.event_name != 'pull_request'

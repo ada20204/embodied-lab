@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>具身实验记录 · 作品集</title>
+<meta name="description" content="端侧部署与验证：把具身模型放到真实硬件上，量数值、量延迟，再接上机器人。">
+<link rel="stylesheet" href="story.css">
+</head>
+<body>
+<canvas id="stage" aria-hidden="true"></canvas>
+
+<header class="top">
+  <a class="brand" href="#c0">具身实验记录</a>
+  <nav class="dots" aria-label="章节">
+    <a href="#c0" data-go="0"><i></i><span>开场</span></a>
+    <a href="#c1" data-go="1"><i></i><span>双臂与 ACT</span></a>
+    <a href="#c2" data-go="2"><i></i><span>G1 语音</span></a>
+    <a href="#c3" data-go="3"><i></i><span>平台矩阵</span></a>
+    <a href="#c4" data-go="4"><i></i><span>副线</span></a>
+  </nav>
+  <button id="lightBtn" class="voice" type="button" aria-expanded="false" aria-controls="lightPanel">灯光</button>
+  <button id="voice" class="voice" type="button" aria-pressed="false" title="让讲解员朗读（默认静音）">🔇 朗读</button>
+</header>
+
+
+<div id="tools" class="tools">
+  <section id="lightPanel" class="panel" hidden aria-label="灯光">
+    <header><b>灯光</b><button type="button" class="x" data-close="lightPanel" aria-label="关闭灯光面板">×</button></header>
+    <div class="presets" id="lightPresets" role="group" aria-label="灯光预设"></div>
+    <div class="dialrow">
+      <svg id="dial" viewBox="0 0 100 100" width="92" height="92" role="slider" aria-label="主光方向" aria-valuemin="-180" aria-valuemax="180" tabindex="0">
+        <circle cx="50" cy="50" r="40" class="dial-ring"/>
+        <path d="M50 30 L44 42 L56 42 Z" class="dial-robot"/>
+        <circle cx="50" cy="50" r="6" class="dial-robot"/>
+        <line id="dialLine" x1="50" y1="50" x2="50" y2="10" class="dial-line"/>
+        <circle id="dialSun" cx="50" cy="10" r="7" class="dial-sun"/>
+      </svg>
+      <p class="dial-note">俯视图：机器人朝上。拖动小圆点改变主光从哪个方向照来。</p>
+    </div>
+    <div class="sliders" id="lightSliders"></div>
+    <div class="row"><button type="button" id="lightReset" class="mini">恢复默认</button></div>
+  </section>
+  <section id="inspect" class="panel" hidden aria-label="部件">
+    <header><b id="inspTitle">部件</b><button type="button" class="x" data-close="inspect" aria-label="关闭">×</button></header>
+    <p class="insp-sub" id="inspSub"></p>
+    <div id="inspCtl">
+      <label for="inspSlider" class="insp-l">关节角 <output id="inspVal">0°</output></label>
+      <input id="inspSlider" type="range" min="-180" max="180" step="1" value="0">
+      <p class="insp-range" id="inspRange"></p>
+      <div class="row"><button type="button" id="inspReset" class="mini">让它回到动画</button><button type="button" id="inspResetAll" class="mini">全部回到动画</button></div>
+    </div>
+  </section>
+</div>
+<div id="hint" class="hint">拖动旋转 · 点击选中部件 · 双击复位视角</div>
+<div id="tip" class="tip" hidden></div>
+<div id="hud" class="hud" role="status" aria-live="polite">
+  <div class="hud-say" id="hudSay"></div>
+  <div class="hud-tag"><b id="hudGest">待机</b><span id="hudAct">动作 99 · 释放手臂</span><em class="b b-demo">示意</em></div>
+</div>
+
+<div id="loading" class="loading">正在加载模型…</div>
+<div id="nogl" class="nogl" hidden>这个浏览器不支持 WebGL2，3D 部分无法显示；文字内容不受影响。</div>
+
+<main>
+
+<!-- ============ 0 开场 ============ -->
+<section class="chap" id="c0" data-ch="0">
+  <div class="beat" data-gesture="wave" data-say="你好，我是这个页面的讲解员，一台宇树 G1 的数字模型。我的手势是示意，不是真机录制。">
+    <div class="card">
+      <p class="kicker">具身智能 · 端侧部署与验证</p>
+      <h1>从模型到板子，<br>再到机器人</h1>
+      <p>我做的事：把具身模型放到真实硬件上，量化、上板、量数值和延迟，再接到机械臂或人形机器人上。</p>
+      <p>这一页按章节往下滚。每个结论旁边都标了<b>证据类型</b>，<b>没做成的事我也放在里面</b>。</p>
+    </div>
+  </div>
+  <div class="beat" data-gesture="present" data-say="每个结论旁边都有徽章，告诉你它是真机、板测，还是仿真和示意。">
+    <div class="card">
+      <h2>怎么读这个页面</h2>
+      <ul class="legend">
+        <li><em class="b b-real">真机</em>在真实机器人上跑过</li>
+        <li><em class="b b-board">板测</em>在目标芯片上实测</li>
+        <li><em class="b b-sim">仿真</em>只在软件里验证</li>
+        <li><em class="b b-demo">示意</em>为了说明画的，不是实测</li>
+        <li><em class="b b-plan">计划</em>还没做</li>
+      </ul>
+      <h3>手上的设备</h3>
+      <p class="chips-static">
+        <span>宇树 G1</span><span>越疆 Nova 双臂</span><span>RTX 5090 / 3080</span><span>Jetson AGX Orin</span><span>地瓜 S100</span><span>高通 8550</span><span>紫光展锐 7870</span>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 1 双臂与 ACT ============ -->
+<section class="chap" id="c1" data-ch="1">
+  <div class="beat" data-gesture="point" data-say="先看越疆 Nova 双臂上的 ACT 策略，再看它的数据流。">
+    <div class="card">
+      <p class="kicker">01 · 双臂 · 模仿学习</p>
+      <h2>ACT 策略：一次预测未来 45 步</h2>
+      <p>在越疆 Nova 双臂上采集示教数据、训练 ACT 策略。策略每次输出一段<b>动作块</b>：45 步 × 16 维，控制端取其中前 14 维驱动关节。</p>
+      <p class="meta"><em class="b b-real">真机</em> 采集与控制集成（历史工作）</p>
+      <p class="meta nonova">双臂的 3D 模型暂未公开，这里只显示文字与数据。</p>
+    </div>
+  </div>
+  <div class="beat" data-gesture="present" data-say="把策略搬到板子上，最要紧的是两件事：量化后还准不准，够不够快。">
+    <div class="card">
+      <p class="kicker">02 · 部署到地瓜 S100</p>
+      <h2>量化后准不准，够不够快</h2>
+      <div class="flow" aria-label="数据流">
+        <div class="node"><b>相机</b><small>RGBD 网关</small></div>
+        <i></i>
+        <div class="node"><b>串流</b><small>p50 46 ms · 21 fps</small></div>
+        <i></i>
+        <div class="node hot"><b>S100 板端 ACT</b><small>推理 11.3 ms</small></div>
+        <i></i>
+        <div class="node"><b>关节指令</b><small>前 14 维</small></div>
+      </div>
+      <dl class="nums">
+        <div><dt>板端量化 vs 浮点</dt><dd>MAE <b>0.031</b> rad · cos <b>0.9993</b></dd></div>
+        <div><dt>板端单次推理</dt><dd><b>11.3</b> ms</dd></div>
+        <div><dt>串流端到端</dt><dd>p50 <b>46</b> ms @ 21 fps</dd></div>
+      </dl>
+      <p class="meta"><em class="b b-board">板测</em> 历史验收。<b>最近服务未运行，当前实机闭环未复验</b>，部分候选精度未通过。</p>
+    </div>
+  </div>
+  <div class="beat" data-gesture="idle" data-say="这套模型和动作都是示意，方便看清结构。">
+    <div class="card">
+      <p class="kicker">03 · 这个模型</p>
+      <h2>数字孪生：先在网页里看得见</h2>
+      <p>这是我做的 Web 控制与仿真里的 Nova 双臂模型，关节轴和限位来自项目的关节表。</p>
+      <p class="meta"><em class="b b-demo">示意</em> 页面里的关节运动是为了展示结构，<b>不是策略输出</b>；夹爪是占位几何。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 G1 语音 ============ -->
+<section class="chap" id="c2" data-ch="2">
+  <div class="beat" data-gesture="wave" data-say="我是 G1。下面讲讲怎么让我听懂一句话，再做出一个动作。">
+    <div class="card">
+      <p class="kicker">04 · 人形机器人 · 语音交互</p>
+      <h2>一句话，怎么变成一个动作</h2>
+      <ol class="stages">
+        <li>唤醒词</li><li>VAD 断句</li><li>ASR</li><li>大模型回复</li><li>TTS · 灯光 · 预设动作</li>
+      </ol>
+      <p>动作不由模型直接控制关节：回复先过一层<b>动作白名单</b>，再经 Jetson 中继下发给 G1。</p>
+      <div class="credit">
+        <b>参考项目</b> · 西交利物浦具身智能实验室 · <a href="https://github.com/AlinaYuhan/g1-voice-interaction-pipeline" rel="noopener">AlinaYuhan/g1-voice-interaction-pipeline</a>
+        <p class="mine">我的贡献：<span>（待补充）</span></p>
+      </div>
+    </div>
+  </div>
+  <div class="beat" data-gesture="idle" data-say="点一个动作，我来演示。目前只做了三个示意姿态。">
+    <div class="card">
+      <p class="kicker">05 · 动作白名单</p>
+      <h2>14 个预设动作</h2>
+      <p>点击一个动作，让屏幕上的 G1 演示。<b>只有标了实心的做了示意姿态</b>，其余还没做。</p>
+      <div class="chips" id="actionChips" role="group" aria-label="动作白名单"></div>
+      <p class="meta"><em class="b b-demo">示意</em> 关节角是我手工设定的，<b>不是宇树的真实动作轨迹</b>。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 平台矩阵 ============ -->
+<section class="chap wide" id="c3" data-ch="3">
+  <div class="beat" data-gesture="present" data-say="这一章最重要：每个案例做到哪一步，哪里没过。">
+    <div class="card wide-card">
+      <p class="kicker">06 · 端侧平台矩阵</p>
+      <h2>做到哪一步，哪里没过</h2>
+      <p id="matrixSummary" class="summary"></p>
+      <div class="filters" id="matrixFilters" role="group" aria-label="筛选">
+        <button type="button" data-f="all" aria-pressed="true">全部</button>
+        <button type="button" data-f="ok" aria-pressed="false">通过</button>
+        <button type="button" data-f="part" aria-pressed="false">部分</button>
+        <button type="button" data-f="fail" aria-pressed="false">未通过</button>
+        <button type="button" data-f="todo" aria-pressed="false">待补</button>
+      </div>
+      <div class="table-wrap"><table class="matrix" id="matrix">
+        <thead><tr><th>平台 / 案例</th><th>状态</th><th>证据到哪一步</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <p class="meta">点一行展开“尚未完成”。快照日期 2026-09-28，出自 edge-ai 仓库的能力快照；<b>覆盖不等于每个平台、每个模型都已验收</b>。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 副线 ============ -->
+<section class="chap" id="c4" data-ch="4">
+  <div class="beat" data-gesture="wave" data-say="最后一个是副线。谢谢你看到这里。">
+    <div class="card">
+      <p class="kicker">07 · 副线</p>
+      <h2>影视运镜预演台</h2>
+      <p>用 Nova 挂 Pocket 3 拍产品，能在浏览器里设计运镜，逐帧检查干涉、限位、速度、加速度和奇异，并自动修正。</p>
+      <p class="meta"><em class="b b-sim">仿真</em> 近似参数，尚未上真机。</p>
+      <p class="cta"><a class="btn" href="../previz/">打开预演台</a> <a class="btn ghost" href="../index.html">读笔记</a></p>
+      <p class="fine">本页与 Claude（Anthropic）协作完成。宇树（Unitree）、越疆（Dobot）、DJI 等名称归各自所有者，与本页无关。G1 模型来自 MuJoCo Menagerie（BSD-3-Clause，© Unitree Robotics），已抽稀，见 <a href="../assets/g1/NOTICE.md">NOTICE</a>。</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script src="gl.js"></script>
+<script src="g1-poses.js"></script>
+<script src="g1-model.js"></script>
+<script src="nova-model.js"></script>
+<script src="story.js"></script>
+</body>
+</html>
