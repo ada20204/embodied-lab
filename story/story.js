@@ -163,11 +163,13 @@
   }
   const axisOf = a => ['X', 'Y', 'Z'][[0, 1, 2].sort((i, j) => Math.abs(a[j]) - Math.abs(a[i]))[0]];
   function hlNodes(n) {
+    if (n.isLed) return [n];
     if (modelOf(n) === 'g1') { const b = n.isGeom ? n.parent : n; return b ? b.children.filter(c => c.isGeom) : [n]; }
     return [jointOf(n) || n];
   }
   const setTint = (list, t) => list.forEach(x => { x.tintSelf = t; });
   const nodeInfo = n => {
+    if (n.isLed) return { model: 'g1', joint: null, name: null, label: '头部指示灯（示意位置）' };
     const model = modelOf(n), j = model === 'g1' ? jointOf(n.isGeom ? n.parent : n) : jointOf(n);
     const name = j ? jointNames.get(j) : null;
     return { model, joint: j, name, label: name ? labelOf(name, model) : (model === 'g1' ? '骨盆（浮动基座）' : (n.name || '部件')) };
@@ -185,10 +187,12 @@
     return st.pick(x, y, { roots: curRoots });
   }
 
+  function openPanel(id) { const p = $('#' + id); p.hidden = false; const b = $('#' + ({ lightPanel: 'lightBtn', ledPanel: 'ledBtn' }[id] || '')); if (b) b.setAttribute('aria-expanded', 'true'); hideHint(); }
   const insp = { box: $('#inspect'), title: $('#inspTitle'), sub: $('#inspSub'), ctl: $('#inspCtl'), slider: $('#inspSlider'), val: $('#inspVal'), range: $('#inspRange') };
   function select(n) {
     if (sel) setTint(sel.nodes, null);
     if (!n) { sel = null; insp.box.hidden = true; return; }
+    if (n.isLed) { sel = null; insp.box.hidden = true; openPanel('ledPanel'); return; }
     const info = nodeInfo(n); sel = Object.assign({ nodes: hlNodes(n) }, info);
     setTint(sel.nodes, SEL_TINT);
     insp.box.hidden = false; insp.title.textContent = info.label;
@@ -212,7 +216,7 @@
   $('#inspReset').addEventListener('click', () => { if (sel && sel.name) { delete manual[sel.name]; syncSlider(true); } });
   $('#inspResetAll').addEventListener('click', () => { Object.keys(manual).forEach(k => delete manual[k]); syncSlider(true); });
   $$('[data-close]').forEach(b => b.addEventListener('click', () => {
-    const id = b.dataset.close; if (id === 'inspect') select(null); else { $('#' + id).hidden = true; if (id === 'lightPanel') $('#lightBtn').setAttribute('aria-expanded', 'false'); }
+    const id = b.dataset.close; if (id === 'inspect') select(null); else { $('#' + id).hidden = true; const bb = { lightPanel: '#lightBtn', ledPanel: '#ledBtn' }[id]; if (bb) $(bb).setAttribute('aria-expanded', 'false'); }
   }));
 
   const tip = $('#tip');
@@ -306,6 +310,64 @@
     syncLight();
   }
 
+
+  /* ---------------- 头部指示灯 ---------------- */
+  const led = { rgb: [0, 0, 0], effect: 'solid', demo: null, step: -1 };
+  const ledUI = { sl: {}, pre: [] };
+  const LED_PRESETS = [['灭', [0, 0, 0]], ['红 · 聆听', [255, 0, 0]], ['蓝 · 回复', [0, 0, 255]], ['绿', [0, 255, 0]], ['黄', [255, 190, 0]], ['白', [255, 255, 255]]];
+  const ledStepEl = $('#ledStep');
+  function syncLed() {
+    ['r', 'g', 'b'].forEach((k, i) => { ledUI.sl[k].input.value = led.rgb[i]; ledUI.sl[k].out.textContent = led.rgb[i]; });
+    $('#ledCall').textContent = G1Led.call(led.rgb);
+    $('#ledFx').textContent = led.effect === 'blink' ? '闪烁 · 约 1 Hz' : '常亮';
+    $$('#ledEffects button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.fx === led.effect)));
+    ledUI.pre.forEach(([b, rgb]) => b.setAttribute('aria-pressed', String(rgb.every((v, i) => v === led.rgb[i]))));
+  }
+  function setLed(part, manual) {
+    if (manual && led.demo) { led.demo = null; led.step = -1; ledStepEl.textContent = ''; }
+    if (part.rgb) led.rgb = part.rgb.map(G1Led.clamp255);
+    if (part.effect) led.effect = part.effect;
+    syncLed();
+  }
+  function buildLed() {
+    if (!st) { $('#ledBtn').hidden = true; return; }
+    const box = $('#ledSliders');
+    [['r', 'R 红'], ['g', 'G 绿'], ['b', 'B 蓝']].forEach(([k, name], i) => {
+      const row = document.createElement('div'); row.className = 'sl';
+      row.innerHTML = `<label for="led_${k}">${name}</label><input id="led_${k}" type="range" min="0" max="255" step="1"><output></output>`;
+      const input = row.querySelector('input'), out = row.querySelector('output');
+      input.addEventListener('input', () => { const rgb = led.rgb.slice(); rgb[i] = +input.value; setLed({ rgb }, true); });
+      ledUI.sl[k] = { input, out }; box.appendChild(row);
+    });
+    LED_PRESETS.forEach(([name, rgb]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.innerHTML = `<i class="swatch" style="background:rgb(${rgb})"></i>`; b.append(name);
+      b.addEventListener('click', () => setLed({ rgb }, true)); $('#ledPresets').appendChild(b); ledUI.pre.push([b, rgb]);
+    });
+    $$('#ledEffects button').forEach(b => b.addEventListener('click', () => setLed({ effect: b.dataset.fx }, true)));
+    $('#ledDemo').addEventListener('click', () => { led.demo = { t0: performance.now() }; led.step = -1; });
+    $('#ledBtn').addEventListener('click', () => { const p = $('#ledPanel'); if (p.hidden) openPanel('ledPanel'); else { p.hidden = true; $('#ledBtn').setAttribute('aria-expanded', 'false'); } });
+    $$('[data-open]').forEach(b => b.addEventListener('click', () => openPanel(b.dataset.open)));
+    syncLed();
+  }
+  /** 每帧：演示序列推进；把灯色写到模型的自发光和光晕上 */
+  function updateLed(now) {
+    if (led.demo) {
+      const i = G1Led.stepAt((now - led.demo.t0) / 1000);
+      if (i < 0) { led.demo = null; led.step = -1; ledStepEl.textContent = '演示结束。'; setLed({ rgb: G1Led.STATES.off.rgb, effect: 'solid' }); }
+      else if (i !== led.step) {
+        led.step = i; const d = G1Led.DEMO[i], sttt = G1Led.STATES[d.state];
+        led.rgb = sttt.rgb.slice(); led.effect = sttt.effect; syncLed();
+        ledStepEl.innerHTML = ''; ledStepEl.append(`${i + 1}/${G1Led.DEMO.length}　${d.text}`);
+        if (d.why) { const sm = document.createElement('small'); sm.textContent = d.why; ledStepEl.appendChild(sm); }
+      }
+    }
+    if (!g1 || !g1.led) return null;
+    const lv = G1Led.levelAt(led.effect, now / 1000), c = led.rgb.map(v => v / 255 * lv), any = c.some(v => v > 0.001), nd = g1.led.node, w = nd.world, k = g1.led.center;
+    nd.emissive = any ? c.map(v => Math.min(1, v * 1.2)) : null;
+    nd.color = any ? c.map(v => 0.06 + v * 0.35) : [0.13, 0.13, 0.15];
+    return { pos: [w[0] * k[0] + w[4] * k[1] + w[8] * k[2] + w[12], w[1] * k[0] + w[5] * k[1] + w[9] * k[2] + w[13], w[2] * k[0] + w[6] * k[1] + w[10] * k[2] + w[14]], col: c.map(v => v * 0.9) };
+  }
+
   /* ---------------- 渲染循环 ---------------- */
   let prev = performance.now(), t0 = prev, visible = true;
   document.addEventListener('visibilitychange', () => { visible = !document.hidden; prev = performance.now(); });
@@ -347,9 +409,10 @@
     if (wantG1) st.shadows.push({ c: [0, 0], r: 0.55 });
     if (wantNova) st.shadows.push({ c: [0, 0], r: 0.95 });
     curRoots = roots; curPip = !!(chc.pip && g1 && innerWidth >= (chc.pipMinW || 0));
-    st.render({ roots });
+    const glow = updateLed(performance.now()) || undefined;
+    st.render({ roots, glow: wantG1 ? glow : undefined });
     if (sel && now - inspT > 200) { inspT = now; syncSlider(false); }
-    if (chc.pip && g1 && innerWidth >= (chc.pipMinW || 0)) st.render({ roots: [g1.root], camera: PIP_CAM, viewport: pipRect(), clearColor: false, grid: false });
+    if (chc.pip && g1 && innerWidth >= (chc.pipMinW || 0)) st.render({ roots: [g1.root], camera: PIP_CAM, viewport: pipRect(), clearColor: false, grid: false, glow });
   }
 
   /* ---------------- 章节导航、卡片出现、当前节 ---------------- */
@@ -400,10 +463,10 @@
   /* ---------------- 启动 ---------------- */
   computeScroll(); onScroll();
   setGesture('wave', $('.beat').dataset.say || '');
-  buildLight();
+  buildLight(); buildLed();
   loadModels().finally(() => { indexJoints(); $('#loading').classList.add('done'); });
   requestAnimationFrame(frame);
 
   // 供本地测试使用
-  window.__story = { get state() { return { ch: S.ch, p: S.p, gesture, nova: !!nova, g1: !!g1, sel: sel && { model: sel.model, name: sel.name, label: sel.label }, manual: Object.assign({}, manual), light: st && Object.assign({}, st.light), orbit: Object.assign({}, orbit) }; }, MATRIX, pickAt, select };
+  window.__story = { get state() { return { ch: S.ch, p: S.p, gesture, nova: !!nova, g1: !!g1, sel: sel && { model: sel.model, name: sel.name, label: sel.label }, manual: Object.assign({}, manual), light: st && Object.assign({}, st.light), orbit: Object.assign({}, orbit) }; }, MATRIX, pickAt, select, led, setLed, orbit };
 })();

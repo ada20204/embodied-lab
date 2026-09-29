@@ -19,6 +19,7 @@
     <a href="#c3" data-go="3"><i></i><span>平台矩阵</span></a>
     <a href="#c4" data-go="4"><i></i><span>副线</span></a>
   </nav>
+  <button id="ledBtn" class="voice" type="button" aria-expanded="false" aria-controls="ledPanel">指示灯</button>
   <button id="lightBtn" class="voice" type="button" aria-expanded="false" aria-controls="lightPanel">灯光</button>
   <button id="voice" class="voice" type="button" aria-pressed="false" title="让讲解员朗读（默认静音）">🔇 朗读</button>
 </header>
@@ -40,6 +41,16 @@
     </div>
     <div class="sliders" id="lightSliders"></div>
     <div class="row"><button type="button" id="lightReset" class="mini">恢复默认</button></div>
+  </section>
+  <section id="ledPanel" class="panel" hidden aria-label="头部指示灯">
+    <header><b>头部指示灯</b><button type="button" class="x" data-close="ledPanel" aria-label="关闭指示灯面板">×</button></header>
+    <p class="led-call"><code id="ledCall">LedControl(0, 0, 0)</code><span id="ledFx" class="fx">常亮</span></p>
+    <div class="presets" id="ledPresets" role="group" aria-label="常用颜色"></div>
+    <div class="sliders" id="ledSliders"></div>
+    <div class="row" id="ledEffects" role="group" aria-label="效果"><button type="button" class="mini" data-fx="solid" aria-pressed="true">常亮</button><button type="button" class="mini" data-fx="blink" aria-pressed="false">闪烁</button></div>
+    <div class="row"><button type="button" id="ledDemo" class="mini">▶ 演示一轮对话</button></div>
+    <p class="led-step" id="ledStep" aria-live="polite"></p>
+    <p class="insp-range">颜色规则取自参考项目的源码：红＝聆听，蓝＝回复与待机，其余颜色是自定义。灯的位置是示意，页面不连接真机。</p>
   </section>
   <section id="inspect" class="panel" hidden aria-label="部件">
     <header><b id="inspTitle">部件</b><button type="button" class="x" data-close="inspect" aria-label="关闭">×</button></header>
@@ -144,6 +155,7 @@
         <li>唤醒词</li><li>VAD 断句</li><li>ASR</li><li>大模型回复</li><li>TTS · 灯光 · 预设动作</li>
       </ol>
       <p>动作不由模型直接控制关节：回复先过一层<b>动作白名单</b>，再经 Jetson 中继下发给 G1。</p>
+      <p class="meta">头部指示灯也由管线控制：红＝聆听，蓝＝回复。<button type="button" class="mini" data-open="ledPanel">试试指示灯</button></p>
       <div class="credit">
         <b>参考项目</b> · 西交利物浦具身智能实验室 · <a href="https://github.com/AlinaYuhan/g1-voice-interaction-pipeline" rel="noopener">AlinaYuhan/g1-voice-interaction-pipeline</a>
         <p class="mine">我的贡献：<span>（待补充）</span></p>
@@ -202,6 +214,7 @@
 
 <script src="gl.js"></script>
 <script src="g1-poses.js"></script>
+<script src="g1-led.js"></script>
 <script src="g1-model.js"></script>
 <script src="nova-model.js"></script>
 <script src="story.js"></script>

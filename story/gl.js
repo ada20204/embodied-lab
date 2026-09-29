@@ -119,6 +119,7 @@
   precision highp float;
   in vec3 vN; in vec3 vW;
   uniform vec3 uColor; uniform vec3 uEye; uniform vec3 uBg; uniform vec3 uTint; uniform float uTintK;
+  uniform vec3 uEmis; uniform vec3 uGlowPos; uniform vec3 uGlowCol;
   uniform vec3 uL; uniform vec3 uKeyCol; uniform float uAmb; uniform float uKey; uniform float uFill; uniform float uRim; uniform float uSpec;
   out vec4 o;
   void main(){
@@ -132,6 +133,9 @@
     float spec = pow(max(dot(n, normalize(uL+v)), 0.0), 48.0) * step(0.0, dot(n,uL));
     vec3 base = mix(uColor, uTint, uTintK);
     vec3 col = base*(uAmb*(0.48+0.52*hemi) + uKey*key*uKeyCol + uFill*fill) + rim*vec3(0.20,0.26,0.32)*uRim + spec*uSpec*uKeyCol;
+    vec3 gv = uGlowPos - vW; float gd2 = dot(gv,gv);
+    col += base * uGlowCol * (1.0/(1.0+60.0*gd2)) * (max(dot(n,normalize(gv)),0.0)*0.75+0.25) * 1.6;
+    col += uEmis;
     float d = length(uEye - vW);
     col = mix(col, uBg, clamp((d-3.2)/6.0, 0.0, 0.85));
     o = vec4(col, 1.0);
@@ -164,7 +168,7 @@
     const bg = opt.bg || [0.055, 0.063, 0.075];
     const P = prog(gl, VS, FS), GP = prog(gl, GVS, GFS), SP = prog(gl, GVS, SFS), PK = prog(gl, VS, PFS);
     const U = n => gl.getUniformLocation(P, n);
-    const u = { vp: U('uVP'), model: U('uModel'), nrm: U('uNrm'), color: U('uColor'), eye: U('uEye'), bg: U('uBg'), tint: U('uTint'), tintK: U('uTintK'), L: U('uL'), keyCol: U('uKeyCol'), amb: U('uAmb'), key: U('uKey'), fill: U('uFill'), rim: U('uRim'), spec: U('uSpec') };
+    const u = { vp: U('uVP'), model: U('uModel'), nrm: U('uNrm'), color: U('uColor'), eye: U('uEye'), bg: U('uBg'), tint: U('uTint'), tintK: U('uTintK'), L: U('uL'), keyCol: U('uKeyCol'), amb: U('uAmb'), key: U('uKey'), fill: U('uFill'), rim: U('uRim'), spec: U('uSpec'), emis: U('uEmis'), glowPos: U('uGlowPos'), glowCol: U('uGlowCol') };
     const pk = { vp: gl.getUniformLocation(PK, 'uVP'), model: gl.getUniformLocation(PK, 'uModel'), nrm: gl.getUniformLocation(PK, 'uNrm'), id: gl.getUniformLocation(PK, 'uId') };
     let fbo = null, fboW = 0, fboH = 0, rbC = null, rbD = null;
 
@@ -181,6 +185,7 @@
     gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
 
     /** 遍历节点树：更新世界矩阵与父指针，对带网格的节点调用 fn(node, 继承的着色) */
+    const ZERO3 = [0, 0, 0];
     const traverse = (n, pw, tint, fn) => {
       if (!n.visible) return;
       let local = n.base;
@@ -239,6 +244,22 @@
         const rootNode = st.node({ name: 'root', base: opt2.base || M4.id(), children: sc });
         rootNode.byName = byName;
         return rootNode;
+      },
+      /** 椭圆环带（开口圆柱面）：中心 c、半轴 rx/ry、半高 h；返回已上传的网格 */
+      makeBand(o) {
+        const N = o.segments || 64, pos = new Float32Array(N * 2 * 3), nrm = new Float32Array(N * 2 * 3), idx = [];
+        for (let i = 0; i < N; i++) {
+          const a = i / N * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+          let nx = ca / o.rx, ny = sa / o.ry; const l = Math.hypot(nx, ny); nx /= l; ny /= l;
+          for (let r = 0; r < 2; r++) {
+            const k = (i * 2 + r) * 3;
+            pos[k] = o.c[0] + o.rx * ca; pos[k + 1] = o.c[1] + o.ry * sa; pos[k + 2] = o.c[2] + (r ? -o.h : o.h);
+            nrm[k] = nx; nrm[k + 1] = ny; nrm[k + 2] = 0;
+          }
+          const j = (i + 1) % N; idx.push(i * 2, i * 2 + 1, j * 2, j * 2, i * 2 + 1, j * 2 + 1);
+        }
+        const m = { name: o.name || 'band', prims: [{ pos, nrm, idx: Uint32Array.from(idx), color: o.color || [0.15, 0.15, 0.17] }] };
+        st.uploadMesh(m); return m;
       },
       add(node) { st.roots.push(node); return node; },
       resize() {
@@ -309,10 +330,13 @@
         const Lt = st.light, ra = Lt.az * Math.PI / 180, re = Lt.el * Math.PI / 180, tt = Lt.temp;
         gl.uniform3f(u.L, Math.cos(re) * Math.cos(ra), Math.cos(re) * Math.sin(ra), Math.sin(re));
         gl.uniform3f(u.keyCol, 1 + 0.14 * tt, 1 + 0.02 * tt, 1 - 0.18 * tt);
+        const gw = o.glow || { pos: [0, 0, 0], col: [0, 0, 0] };
+        gl.uniform3fv(u.glowPos, gw.pos); gl.uniform3fv(u.glowCol, gw.col);
         gl.uniform1f(u.amb, 0.58 * Lt.amb); gl.uniform1f(u.key, 0.62 * Lt.key); gl.uniform1f(u.fill, 0.16 * Lt.fill); gl.uniform1f(u.rim, Lt.rim); gl.uniform1f(u.spec, 0.14 * Lt.spec);
         const drawNode = (n, tk) => {
           gl.uniformMatrix4fv(u.model, false, n.world); gl.uniformMatrix3fv(u.nrm, false, M4.normalMat(n.world));
           const tn = n.tintSelf || tk;
+          gl.uniform3fv(u.emis, n.emissive || ZERO3);
           for (const m of n.meshes) for (const p of m.prims) {
             const c = n.color || p.color;
             gl.uniform3f(u.color, c[0], c[1], c[2]);
