@@ -1,0 +1,40 @@
+name: 部署语音讲解员后端（Cloudflare Worker）
+
+# 只在 worker/ 有改动或手动触发时运行。没配 Cloudflare 密钥时自动跳过，不会让流水线变红。
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', '.github/workflows/worker.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_CF: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 测试
+        run: node --test tests/worker.test.mjs
+      - name: 还没配置 Cloudflare，跳过部署
+        if: env.HAS_CF != 'true'
+        run: echo "未设置 CLOUDFLARE_API_TOKEN，见 worker/README.md"
+      - name: 部署
+        if: env.HAS_CF == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          secrets: |
+            DEEPSEEK_API_KEY
+            ACCESS_CODE
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          ACCESS_CODE: ${{ secrets.WORKER_ACCESS_CODE }}
