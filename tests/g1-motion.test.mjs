@@ -40,15 +40,19 @@ test('采样：四元数走最短路径并保持单位长度', () => {
 test('片段目录：id 唯一', () => { assert.equal(new Set(M.CLIPS.map(c => c.id)).size, M.CLIPS.length); });
 
 // 有本地数据时，用真实片段检查数据和模型对得上（CI 上没有数据就跳过）
-const real = process.env.LAFAN_G1_DIR ? `${process.env.LAFAN_G1_DIR}/walk1_subject1.csv` : null;
-test('真实片段：四元数归一、根高度、关节角在限位内', { skip: !(real && fs.existsSync(real)) }, () => {
-  const c = M.parseCsv(fs.readFileSync(real, 'utf8'));
-  assert.ok(c.n > 1000);
-  let bad = 0, maxOver = 0;
-  for (let i = 0; i < c.n; i += 7) {
-    assert.ok(Math.abs(Math.hypot(c.root[i * 7 + 3], c.root[i * 7 + 4], c.root[i * 7 + 5], c.root[i * 7 + 6]) - 1) < 1e-3);
-    assert.ok(c.root[i * 7 + 2] > 0.5 && c.root[i * 7 + 2] < 1.1);
-    M.JOINTS.forEach((n, k) => { const j = jointsOf.find(x => x.name === n), v = c.q[i * 29 + k]; const over = Math.max(j.range[0] - v, v - j.range[1], 0); if (over > 0) { bad++; maxOver = Math.max(maxOver, over); } });
-  }
-  assert.ok(maxOver < 0.35, `最大越限 ${maxOver.toFixed(3)} rad（${bad} 个采样点）`);
-});
+const dir = process.env.LAFAN_G1_DIR;
+for (const clip of M.CLIPS) {
+  const file = dir ? `${dir}/${clip.id}.csv` : null;
+  test(`真实片段 ${clip.id}：四元数归一、根高度、关节角在限位内`, { skip: !(file && fs.existsSync(file)) }, () => {
+    const c = M.parseCsv(fs.readFileSync(file, 'utf8'));
+    assert.ok(c.n > 1000);
+    const low = 0.02;   // 只做合理性检查：舞蹈、格斗、摔倒里都有蹲地和倒地的动作
+    let bad = 0, maxOver = 0;
+    for (let i = 0; i < c.n; i += 7) {
+      assert.ok(Math.abs(Math.hypot(c.root[i * 7 + 3], c.root[i * 7 + 4], c.root[i * 7 + 5], c.root[i * 7 + 6]) - 1) < 1e-3);
+      assert.ok(c.root[i * 7 + 2] > low && c.root[i * 7 + 2] < 1.3, `高度 ${c.root[i * 7 + 2]}`);
+      M.JOINTS.forEach((n, k) => { const j = jointsOf.find(x => x.name === n), v = c.q[i * 29 + k]; const over = Math.max(j.range[0] - v, v - j.range[1], 0); if (over > 0) { bad++; maxOver = Math.max(maxOver, over); } });
+    }
+    assert.ok(maxOver < 0.35, `最大越限 ${maxOver.toFixed(3)} rad（${bad} 个采样点）`);
+  });
+}
