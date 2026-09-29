@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HAS_CF: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+      HAS_CODE: ${{ secrets.WORKER_ACCESS_CODE != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,8 +26,19 @@ jobs:
       - name: 还没配置 Cloudflare，跳过部署
         if: env.HAS_CF != 'true'
         run: echo "未设置 CLOUDFLARE_API_TOKEN，见 worker/README.md"
-      - name: 部署
-        if: env.HAS_CF == 'true'
+      - name: 部署（公开，无访问码）
+        if: env.HAS_CF == 'true' && env.HAS_CODE != 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          secrets: |
+            DEEPSEEK_API_KEY
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      - name: 部署（带访问码）
+        if: env.HAS_CF == 'true' && env.HAS_CODE == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
