@@ -222,7 +222,16 @@
           const b2 = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b2); gl.bufferData(gl.ARRAY_BUFFER, p.nrm, gl.STATIC_DRAW);
           gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
           const b3 = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b3); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, p.idx, gl.STATIC_DRAW);
-          p.count = p.idx.length;
+          p.count = p.idx.length; p.bufs = [b1, b2, b3];
+          gl.bindVertexArray(null);
+        });
+      },
+      /** 释放网格占用的显存（模型换成精细版后，旧的精简版就用不上了） */
+      freeMesh(m) {
+        (m && m.prims || []).forEach(p => {
+          if (p.vao) gl.deleteVertexArray(p.vao);
+          (p.bufs || []).forEach(b => gl.deleteBuffer(b));
+          p.vao = null; p.bufs = null; p.count = 0;
         });
       },
       /** 节点：{name, base(mat4), axis?, angle?, meshes:[mesh], color?, children, visible} */

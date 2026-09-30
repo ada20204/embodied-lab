@@ -26,7 +26,7 @@ jobs:
       - name: 运动学回归测试
         run: node --test tests/kin.test.mjs
       - name: 讲解员姿态与 G1 资源测试
-        run: node --test tests/g1-story.test.mjs tests/g1-led.test.mjs tests/duck.test.mjs tests/g1-motion.test.mjs tests/duck-motion.test.mjs tests/worker.test.mjs
+        run: node --test tests/g1-story.test.mjs tests/g1-led.test.mjs tests/duck.test.mjs tests/g1-motion.test.mjs tests/duck-motion.test.mjs tests/worker.test.mjs tests/lod.test.mjs
 
   deploy:
     if: github.event_name != 'pull_request'

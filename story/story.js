@@ -35,22 +35,83 @@
   const fetchBuf = u => fetch(u).then(r => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.arrayBuffer(); });
   const fetchJson = u => fetch(u).then(r => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); });
 
+  /* ---------------- 模型：先粗后精 ----------------
+   * 首屏只下载精简版（约 15% 面数，三个合计不到 1 MB），讲解员 G1 一到位就撤掉加载遮罩；
+   * 页面空闲后按“当前章节优先”逐个在后台下载精细版，下好就原地替换，姿态、动作、选中都接着走。
+   * 访客开了省流量就一直用精简版。调试：?lod=lo 只用精简版，?lod=hi 一开始就加载精细版。 */
+  const LOD_PARAM = new URLSearchParams(location.search).get('lod');
+  const MODELS = {
+    g1: { glb: '../assets/g1/g1', json: '../assets/g1/g1.json', make: (p, s) => G1Model.build(st, p, s) },
+    nova: {
+      glb: '../assets/nova/nova5', json: '../assets/nova/nova5_joints.json',
+      make: (p, s) => {
+        const m = NovaModel.build(st, p, s);
+        const plat = m.root.byName.platform; if (plat) plat.color = [0.42, 0.45, 0.50];   // 台面偏亮，压暗一点，不抢主体
+        return m;
+      },
+    },
+    duck: { glb: '../assets/duck/duck', json: '../assets/duck/duck.json', make: (p, s) => G1Model.build(st, p, s) },   // 同样是 MuJoCo 关节树，直接复用
+  };
+  const lod = { g1: null, nova: null, duck: null };   // 'lo' | 'hi' | 'lo-final'（精细版下载失败，停在精简版）
+  const parsedOf = {}, specOf = {};
+  const getModel = k => k === 'g1' ? g1 : k === 'nova' ? nova : duck;
+  const setModel = (k, m) => { if (k === 'g1') g1 = m; else if (k === 'nova') nova = m; else duck = m; };
+
+  async function loadOne(k, level) {
+    const d = MODELS[k];
+    const spec = specOf[k] || (specOf[k] = await fetchJson(d.json));
+    const parsed = Stage3D.parseGLB(await fetchBuf(d.glb + (level === 'lo' ? '_lo.glb' : '.glb')));
+    install(k, d.make(parsed, spec), parsed, level);
+  }
+  /** 装上（或替换）一个模型：接过旧模型的根位姿和染色，把选中的关节转到新模型上，再释放旧显存 */
+  function install(k, m, parsed, level) {
+    const old = getModel(k);
+    if (old) {
+      m.root.base = old.root.base; m.root.tint = old.root.tint;
+      if (hov && hov.some(h => modelOf(h) === k)) hov = null;
+    }
+    const reselect = old && sel && sel.model === k ? sel.name : undefined;
+    // 父指针平时在渲染时才补上；这里马上补齐，替换后立刻就能判断节点属于哪个模型
+    (function link(n) { for (const c of n.children) { c.parent = n; link(c); } })(m.root);
+    setModel(k, m); lod[k] = level;
+    jointNames.clear(); indexJoints();
+    if (reselect !== undefined) select(reselect && m.joints[reselect] ? m.joints[reselect] : null);
+    if (old) {
+      (parsedOf[k] ? parsedOf[k].meshes : []).forEach(x => st.freeMesh(x));
+      if (old.led) old.led.node.meshes.forEach(x => st.freeMesh(x));
+    }
+    parsedOf[k] = parsed;
+  }
+
   async function loadModels() {
     if (!st) return;
-    const a = Promise.all([fetchBuf('../assets/g1/g1.glb'), fetchJson('../assets/g1/g1.json')])
-      .then(([b, s]) => { g1 = G1Model.build(st, Stage3D.parseGLB(b), s); });
-    const b = Promise.all([fetchBuf('../assets/nova/nova5.glb'), fetchJson('../assets/nova/nova5_joints.json')])
-      .then(([bf, s]) => {
-        nova = NovaModel.build(st, Stage3D.parseGLB(bf), s);
-        // 台面偏亮，压暗一点，不抢主体
-        const plat = nova.root.byName.platform; if (plat) plat.color = [0.42, 0.45, 0.50];
-      });
-    const c = Promise.all([fetchBuf('../assets/duck/duck.glb'), fetchJson('../assets/duck/duck.json')])
-      .then(([bf, s]) => { duck = G1Model.build(st, Stage3D.parseGLB(bf), s); });   // 同样是 MuJoCo 关节树，直接复用
-    await Promise.allSettled([a, b, c]);
-    if (!g1) console.warn('G1 模型加载失败');
-    if (!duck) { document.body.classList.add('no-duck'); console.info('小鸭子模型不可用：小鸭子章节只显示文字'); }
-    if (!nova) { document.body.classList.add('no-nova'); console.info('Nova 模型不可用：双臂章节只显示文字'); }
+    const level = LOD_PARAM === 'hi' ? 'hi' : 'lo';
+    // 精简版缺失（比如没生成）就直接退回精细版，不让页面因此少一个模型
+    const first = k => loadOne(k, level).catch(() => level === 'lo' ? loadOne(k, 'hi').then(() => { lod[k] = 'hi'; }) : Promise.reject(new Error(k)));
+    const pg = first('g1').catch(() => console.warn('G1 模型加载失败'));
+    const rest = Promise.allSettled([first('nova'), first('duck')]).then(() => {
+      if (!duck) { document.body.classList.add('no-duck'); console.info('小鸭子模型不可用：小鸭子章节只显示文字'); }
+      if (!nova) { document.body.classList.add('no-nova'); console.info('Nova 模型不可用：双臂章节只显示文字'); }
+    });
+    Promise.all([pg, rest]).then(scheduleUpgrade);
+    await pg;   // 讲解员到位就开场，其余模型陆续出现
+  }
+
+  function scheduleUpgrade() {
+    if (LOD_PARAM === 'lo' || LOD_PARAM === 'hi') return;
+    const c = navigator.connection;
+    if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ''))) { console.info('省流量模式：保持精简模型'); return; }
+    const idle = cb => (window.requestIdleCallback ? requestIdleCallback(cb, { timeout: 2500 }) : setTimeout(cb, 600));
+    const step = async () => {
+      const todo = Object.keys(lod).filter(k => lod[k] === 'lo');
+      if (!todo.length) return;
+      const cur = (CHAPTERS[S.ch] || CHAPTERS[0]).main;
+      todo.sort((a, b) => (b === cur) - (a === cur));   // 正在看的那个先换
+      const k = todo[0];
+      try { await loadOne(k, 'hi'); } catch (e) { lod[k] = 'lo-final'; console.info(`${k} 精细模型加载失败，继续用精简版`); }
+      idle(step);
+    };
+    idle(step);
   }
 
   // 镜头：sx/sy 把主体推到右侧（桌面）或上方（手机），给卡片让位
@@ -616,9 +677,9 @@
   computeScroll(); onScroll();
   setGesture('wave', $('.beat').dataset.say || '');
   buildLight(); buildLed(); buildMotion();
-  loadModels().finally(() => { indexJoints(); $('#loading').classList.add('done'); });
+  loadModels().finally(() => { $('#loading').classList.add('done'); });
   requestAnimationFrame(frame);
 
   // 供本地测试使用
-  window.__story = { mot, selectClip, selectDuckClip, get state() { return { motion: mot.clip ? { name: mot.name, t: +mot.t.toFixed(2), n: mot.clip.n, playing: mot.playing } : null, ch: S.ch, p: S.p, gesture, nova: !!nova, g1: !!g1, duck: !!duck, sel: sel && { model: sel.model, name: sel.name, label: sel.label }, manual: Object.assign({}, manual), light: st && Object.assign({}, st.light), orbit: Object.assign({}, orbit) }; }, MATRIX, pickAt, select, led, setLed, orbit };
+  window.__story = { mot, selectClip, selectDuckClip, get state() { return { lod: Object.assign({}, lod), motion: mot.clip ? { name: mot.name, t: +mot.t.toFixed(2), n: mot.clip.n, playing: mot.playing } : null, ch: S.ch, p: S.p, gesture, nova: !!nova, g1: !!g1, duck: !!duck, sel: sel && { model: sel.model, name: sel.name, label: sel.label }, manual: Object.assign({}, manual), light: st && Object.assign({}, st.light), orbit: Object.assign({}, orbit) }; }, MATRIX, pickAt, select, led, setLed, orbit };
 })();
