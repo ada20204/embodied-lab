@@ -11,9 +11,9 @@
 
 ## 做过的修改
 
-- 取走路版 `src/mjlab_microduck/robot/microduck/robot_walk.xml` 的可视网格（38 个 STL，约 43 万三角面），用顶点聚类抽稀到约 17%（约 7.3 万三角面，1.7 MB；薄壳零件多留了一些面，避免内外表面被合并）；
+- 取走路版 `src/mjlab_microduck/robot/microduck/robot_walk.xml` 的可视网格（38 个 STL，约 43 万三角面），用 meshoptimizer 的二次误差简化生成两档：`duck.glb` 约 25%（约 10.8 万三角面，2.4 MB），`duck_lo.glb` 约 4%（首屏用，约 0.46 MB）；法线按折角分裂；生成脚本 `tools/build_meshes.py`。两档都是原 STL 的改编版，同样按 CC BY-NC-SA 提供；
 - 关节层级、轴、限位按 `robot_walk.xml` 原样保留（14 个关节）；材质颜色取自其中的 `<material>`；
-- 格式转换为 glb。抽稀会让部件轮廓略微变小，不适合做碰撞或精确尺寸计算。
+- 格式转换为 glb。简化后的网格只用于展示，不适合做碰撞或精确尺寸计算。
 
 ## 使用提醒
 

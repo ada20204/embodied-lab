@@ -66,7 +66,7 @@
     const out = new T(a.count * n), dv = new DataView(bin.buffer, bin.byteOffset + off);
     for (let i = 0; i < a.count; i++) for (let k = 0; k < n; k++) {
       const p = i * stride + k * T.BYTES_PER_ELEMENT;
-      out[i * n + k] = T === Float32Array ? dv.getFloat32(p, true) : T === Uint16Array ? dv.getUint16(p, true) : T === Uint32Array ? dv.getUint32(p, true) : dv.getUint8(p);
+      out[i * n + k] = T === Float32Array ? dv.getFloat32(p, true) : T === Uint16Array ? dv.getUint16(p, true) : T === Uint32Array ? dv.getUint32(p, true) : T === Int16Array ? dv.getInt16(p, true) : T === Int8Array ? dv.getInt8(p) : dv.getUint8(p);
     }
     return out;
   }
@@ -100,7 +100,12 @@
       prims: m.primitives.filter(p => (p.mode === undefined || p.mode === 4)).map(p => {
         const pos = readAccessor(g, bin, p.attributes.POSITION);
         const idx = p.indices !== undefined ? readAccessor(g, bin, p.indices) : Uint32Array.from({ length: pos.length / 3 }, (_, i) => i);
-        const nrm = p.attributes.NORMAL !== undefined ? readAccessor(g, bin, p.attributes.NORMAL) : calcNormals(pos, idx);
+        let nrm = p.attributes.NORMAL !== undefined ? readAccessor(g, bin, p.attributes.NORMAL) : calcNormals(pos, idx);
+        if (nrm instanceof Int8Array || nrm instanceof Int16Array) {   // 归一化整型法线（KHR_mesh_quantization 的写法）→ 浮点
+          const k = nrm instanceof Int8Array ? 127 : 32767, f = new Float32Array(nrm.length);
+          for (let i = 0; i < nrm.length; i++) f[i] = Math.max(nrm[i] / k, -1);
+          nrm = f;
+        }
         const mat = p.material !== undefined ? g.materials[p.material] : null;
         const c = mat && mat.pbrMetallicRoughness && mat.pbrMetallicRoughness.baseColorFactor || [0.75, 0.75, 0.78, 1];
         return { pos, nrm, idx: idx instanceof Uint32Array ? idx : Uint32Array.from(idx), color: c.slice(0, 3) };

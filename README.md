@@ -12,12 +12,12 @@
 - 每个结论旁标**证据类型**：真机、板测、仿真、示意、计划。平台矩阵里**没通过的案例也列出来**。
 - 讲解员的手势是手工设定的示意姿态，不是宇树的真实动作轨迹；动作编号对应参考项目公开的动作白名单，白名单里没有的手势明确标"页面自定"。
 - **可以互动**：拖动画布旋转视角（双击复位，触控板双指缩放）；点击或悬停任意部件会高亮并显示名称，点击 G1 或双臂的关节可以用滑块手动控制，限位来自模型的关节表；“灯光”面板可以调主光方向（俯视拨盘）、高度、强度、环境光、补光、轮廓光、高光和色温，也有几个预设。
-- **先粗后精的模型加载**：首屏只下载精简版模型（约 15–25% 面数，G1 + 小鸭子约 0.6 MB），讲解员一到位就开场；页面空闲后按“当前章节优先”在后台下载精细版并原地替换，姿态、动作播放和选中的关节都不中断。访客开了省流量就一直用精简版。精简版由 [`tools/make_lod.py`](tools/make_lod.py) 生成（顶点聚类，按表面朝向分组避免薄壳粘连，法线取原模型平均）。在约 3 Mbps 的模拟网速下，首屏从 18 秒降到约 3 秒。
+- **先粗后精的模型加载**：首屏只下载精简版模型（约 4% 面数，G1 + 小鸭子约 0.9 MB），讲解员一到位就开场；页面空闲后按“当前章节优先”在后台下载精修版（约 25% 面数）并原地替换，姿态、动作播放和选中的关节都不中断。访客开了省流量就一直用精简版。两档模型都由 [`tools/build_meshes.py`](tools/build_meshes.py) 从原始 STL 生成：meshoptimizer（MIT）的二次误差简化 + 按 40° 折角分裂法线 + int8 法线存储。双臂模型没有原始 STL，精简版用 [`tools/make_lod.py`](tools/make_lod.py) 从 glb 生成。
 - **动作库（G1）**：可以播放 Unitree 公开的 LAFAN1 重定向动作（22 段：舞蹈 5、走 4、跑 3、冲刺 2、跳 2、格斗 3、摔倒起身 3，30 FPS，29 个关节加根节点位姿），镜头跟随机器人。**仓库和页面都不内置这些数据**：LAFAN1 是 CC BY-NC-ND 4.0，只允许非商用、不得再分发修改版，所以播放时才从源站下载，也可以拖入自己下载的 CSV。重定向只考虑运动学，真机不一定做得到。解析和采样在 [`story/motion.js`](story/motion.js)。
 - **G1 头部指示灯**：“指示灯”面板可以调 RGB、常亮/闪烁（约 1 Hz），也能“演示一轮对话”。颜色规则取自参考项目源码：`LedControl(R,G,B)`，追问窗口打开（聆听）为红，回复播放、播完、超时为蓝。模型上的灯带位置是示意，页面不连接真机。
 - 渲染器 [`story/gl.js`](story/gl.js) 是自己写的 WebGL2（不依赖 Three.js），读 glb 并画带关节的层级模型。
 - **Microduck**：把 Pollen Robotics 的开源小鸭子（`microduck_rl`；代码 Apache-2.0，**3D 网格 CC BY-NC-SA，仅限非商业**）的走路版关节模型放进页面，14 个关节可以点选和拖动；头部的动作是手工做的示意，**不是它的强化学习策略**。**动作库里有 10 段小鸭子的轨迹**（前进走、边走边转、S 形走、走走停停、组合动作、坐下站起、左右脚踢、翻滚、低头抓地）；滚轮模式要换另一套带轮子的模型，还没做：用 MuJoCo + BAM 执行器跑 Pollen 公开的 ONNX 策略录下来的仿真轨迹（`assets/duck/motions/`，50 FPS），不是真机；在我的仿真里速度跟踪偏弱（指令 0.25 m/s，实际约 0.1 m/s），原因没查清。真正的实时策略推理是 Hugging Face 上的官方网页仿真 Microduck Sandbox，页面里有链接。许可见 [`assets/duck/NOTICE.md`](assets/duck/NOTICE.md)。
-- G1 模型来自 MuJoCo Menagerie（BSD-3-Clause，© Unitree Robotics），抽稀后放在 `assets/g1/`，许可见 [`assets/g1/NOTICE.md`](assets/g1/NOTICE.md)。
+- G1 模型来自 MuJoCo Menagerie（BSD-3-Clause，© Unitree Robotics），简化后放在 `assets/g1/`，许可见 [`assets/g1/NOTICE.md`](assets/g1/NOTICE.md)。
 - 越疆双臂模型 `assets/nova/` 来源与许可待确认，**已加入 `.gitignore`，不随仓库发布**；缺少它时页面自动降级为文字。
 
 ## 运镜预演台
@@ -49,8 +49,8 @@
 ```
 index.html          项目主页（在页面里渲染 notes/ 下的笔记）
 story/              作品集滚动叙事页（WebGL2 渲染器、G1 姿态、指示灯、动作库、页面）
-assets/g1/          G1 抽稀网格与关节树（BSD-3-Clause）
-assets/duck/        Microduck 抽稀网格与关节树（网格 CC BY-NC-SA 非商业；关节树 Apache-2.0）
+assets/g1/          G1 两档网格（精修/首屏）与关节树（BSD-3-Clause）
+assets/duck/        Microduck 两档网格与关节树（网格 CC BY-NC-SA 非商业；关节树 Apache-2.0）
 previz/index.html   运镜预演台
 previz/kin.js       运动学、碰撞、检查、自动修正、云台分配
 notes/              笔记（Markdown，GitHub 上也能直接读）
