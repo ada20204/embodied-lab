@@ -28,3 +28,10 @@ curl -N -X POST http://localhost:8787/chat -H 'Origin: http://localhost:8765' -H
 ```
 
 `.dev.vars` 已在 `.gitignore` 里，不要把密钥提交进仓库。
+
+## 部署后自检
+
+```bash
+curl https://embodied-lab-guide.<你的子域>.workers.dev/health
+# 期望：{"ok":true,"model":"deepseek-chat","key":true}；key 为 false 说明 DEEPSEEK_API_KEY 没写进去
+```
