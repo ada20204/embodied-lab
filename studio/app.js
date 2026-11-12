@@ -9,7 +9,7 @@
   const SCRIPTS = ['duck-arm', 'product-arm', 'duck-free'];
   const out = $('#out'), ctx = out.getContext('2d'), glc = $('#gl'), msg = $('#msg');
   const st = window.Stage3D.create(glc, { pixelRatio: 1, bg: [0.035, 0.04, 0.05] });
-  const S = { t: 0, playing: false, lock: Q.get('lock') !== '0', blur: Q.get('blur') !== '0', hud: Q.get('hud') !== '0', snd: false, samples: +Q.get('samples') || 5, sel: 0, end: 0, name: SCRIPTS.includes(Q.get('script')) ? Q.get('script') : SCRIPTS[0] };
+  const S = { t: 0, playing: false, lock: Q.get('lock') !== '0', blur: Q.get('blur') !== '0', hud: Q.get('hud') !== '0', snd: false, samples: +Q.get('samples') || 5, sel: 0, end: 0, view: Q.get('view') === 'free' ? 'free' : 'cam', name: SCRIPTS.includes(Q.get('script')) ? Q.get('script') : SCRIPTS[0] };
   const examples = {}, clips = {}, clipDur = {};
   let script = null, C = null, tl = null, bts = [], plan = null, duck = null, product = null;
   const ev = { cam: {} }, mo = G1Motion.makeOut(), pose = {}, anchor = G1Motion.makeOut(), _ro = G1Motion.makeOut();
@@ -71,11 +71,28 @@
     product = { root: st.node({ name: 'productRoot', children: kids }) };
   }
   const _q = new Array(6), pipCam = { target: [0, 0, 0.3], dist: 2.0, az: -2.5, el: 0.4, fov: 30 }, PIP = [0.69, 0.035, 0.29, 0.36];
-  function poseArm(t) {
+  const _ev2 = { cam: {} }, RED = { c: [1, 0.2, 0.16], k: 0.78 }, freeCam = { target: [0, 0, 0.28], dist: 2.5, az: -2.45, el: 0.42, fov: 32 }; let armNow = null, freeKey = '';
+  function poseArm(t, subjW) {
     const b = plan.opt.base, F = KIN.fk(ReelArm.qAt(plan, t, _q), [0, 0]), Cp = KIN.capsules(F), Wd = p => [p[0] + b[0], p[1] + b[1], p[2] + b[2]];
     [{ a: [0, 0, 0], b: KIN.P(F[1]), r: 0.062 }].concat(Cp).forEach((c, i) => { const P3 = armParts.parts[i], A = Wd(c.a), B = Wd(c.b); setSeg(P3.c, A, B, c.r); setBall(P3.a, A, c.r * (i >= 1 && i <= 5 ? 1.12 : 1)); setBall(P3.b, B, c.r); });
     setSeg(armParts.ped, [b[0], b[1], 0], [b[0], b[1], Math.max(b[2], 0.01)], 0.11);
     lensW = Wd(KIN.P(F[7]));
+    // 干涉：碰到东西的那几段标红（和规划时用的是同一个检测函数）
+    const e = Reel.evalAt(tl, t, _ev2), fl = plan.shots[e.seg.base].flags[Math.round(Math.min(Math.max(e.p, 0), 1) * ReelArm.M)];
+    const col = ReelArm.collide(F, [subjW[0] - b[0], subjW[1] - b[1], subjW[2] - b[2]], plan.opt);
+    armParts.parts.forEach((P3, i) => { const hit = i >= 1 && (col.mask >> (i - 1) & 1) ? RED : null; P3.c.tintSelf = P3.a.tintSelf = P3.b.tintSelf = hit; });
+    armNow = { flag: fl, hits: col.hits, clr: col.clr };
+  }
+  function resetFree() {
+    const b = plan ? plan.opt.base : null;
+    Object.assign(freeCam, b ? { target: [b[0] / 2, b[1] / 2, 0.28], dist: 2.5, az: -2.45, el: 0.42 } : { target: [0, 0, 0.14], dist: 1.9, az: 0.9, el: 0.5 });
+  }
+  // 自由镜头没有机械臂方案，镜头路径自己算一遍
+  const _paths = new WeakMap();
+  function eyePath(seg) {
+    let p = _paths.get(seg); if (p) return p; p = []; const c = seg.cam, N = 48;
+    for (let i = 0; i <= N; i++) { const u = i / N, L = k => c[k] ? c[k][0] + (c[k][1] - c[k][0]) * u : 0, r = seg.clip ? rootAt(seg.clip, seg.s0 + (seg.s1 - seg.s0) * u) : [0, 0, 0]; p.push(Reel.eyeUp({ az: L('az'), el: L('el'), dist: L('dist'), roll: L('roll') }, [r[0], r[1], r[2] + C.subject.lookUp]).eye); }
+    _paths.set(seg, p); return p;
   }
 
   // ---- 脚本 → 时间轴 → 机械臂方案 ----
@@ -89,6 +106,7 @@
     tl = Reel.build(C.shots, C.bpm, { attack: C.attack }); bts = Reel.beats(tl);
     plan = C.rig.arm ? ReelArm.plan(tl, rootAt, { base: C.rig.base, mount: C.rig.mount, lookUp: C.subject.lookUp, subjectR: C.subject.radius }) : null;
     S.sel = Math.min(S.sel, script.shots.length - 1); S.t = Math.min(S.t, tl.dur);
+    const fk = S.name + '|' + (plan ? plan.opt.base.join(',') : 'free'); if (fk !== freeKey) { freeKey = fk; resetFree(); }
     if (!opts.keepCode) $('#code').value = SS.stringify(script);
     if (!opts.noStore) store.set('studio.' + S.name, JSON.stringify(script));
     $('#codeErrs').textContent = '';
@@ -139,9 +157,17 @@
     st.light.az = (cam.az - Math.PI / 2) * 180 / Math.PI - 42; st.light.el = 44; st.light.rim = 1.5; st.light.spec = 1.4;
     const subj = isDuck ? duck.root : product.root;
     st.shadows.length = 0; st.shadows.push({ c: [sx, sy], r: isDuck ? 0.14 : 0.09 });
+    if (plan) poseArm(t, [sx, sy, sz + C.subject.lookUp]); else armNow = null;
+    if (S.view === 'free') {   // 自由视角：主画面是站在旁边看整个场景，小窗才是摄影机拍到的
+      const la = st.light.az;
+      st.light.az = (freeCam.az - Math.PI / 2) * 180 / Math.PI - 42; if (plan) st.shadows.push({ c: [plan.opt.base[0], plan.opt.base[1]], r: 0.3 });
+      st.render({ roots: plan ? [subj, armRoot] : [subj], camera: freeCam, gridCenter: [freeCam.target[0], freeCam.target[1]], gridScale: 0.6, gridColor: [0.45, 0.55, 0.68] });
+      st.light.az = la; st.shadows.length = 1;
+      st.render({ roots: [subj], camera: cam, viewport: PIP, gridCenter: [sx, sy], gridScale: 0.4, gridColor: [0.55, 0.66, 0.80] });
+      return;
+    }
     st.render({ roots: [subj], camera: cam, gridCenter: [sx, sy], gridScale: 0.4, gridColor: [0.55, 0.66, 0.80] });
     if (plan) {
-      poseArm(t);
       const b = plan.opt.base; pipCam.target[0] = (b[0] + sx) / 2; pipCam.target[1] = (b[1] + sy) / 2;
       st.light.az = -60; st.shadows.push({ c: [b[0], b[1]], r: 0.3 });
       st.render({ roots: [subj, armRoot], camera: pipCam, viewport: PIP, gridCenter: [pipCam.target[0], pipCam.target[1]], gridScale: 0.6, gridColor: [0.45, 0.55, 0.68] });
@@ -150,6 +176,7 @@
   const FONT = '-apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif';
   function overlay(t) {
     Reel.evalAt(tl, t, ev);
+    if (S.view === 'free') { overlayFree(t); if (S.hud) hudBar(t); return; }
     const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95);
     g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.55)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     if (ev.seg.cut && ev.sinceCut < 0.09) { ctx.fillStyle = `rgba(255,255,255,${0.22 * (1 - ev.sinceCut / 0.09)})`; ctx.fillRect(0, 0, W, H); }
@@ -163,6 +190,43 @@
       ctx.fillStyle = k.ok ? '#ffb27a' : '#ff8585'; ctx.fillText(k.ok ? `真机放慢 ${k.slow.toFixed(1)}× 拍，成片线性加速` : '这个镜头机械臂拍不了：' + k.issues[0], x + 2, y + h + 20);
     }
     if (!S.hud) return;
+    hudBar(t);
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(W / 2 - 9, H / 2); ctx.lineTo(W / 2 + 9, H / 2); ctx.moveTo(W / 2, H / 2 - 9); ctx.lineTo(W / 2, H / 2 + 9); ctx.stroke();
+  }
+  const projector = (camObj, x, y, w, h) => { const vp = st.viewProj(camObj, w / h); return p => { const Wc = vp[3] * p[0] + vp[7] * p[1] + vp[11] * p[2] + vp[15]; if (Wc < 0.02) return null; return [x + ((vp[0] * p[0] + vp[4] * p[1] + vp[8] * p[2] + vp[12]) / Wc * 0.5 + 0.5) * w, y + (0.5 - (vp[1] * p[0] + vp[5] * p[1] + vp[9] * p[2] + vp[13]) / Wc * 0.5) * h]; }; };
+  const FLAGTXT = fl => fl & 1 ? '够不着' : fl & 2 ? '关节超出限位' : '';
+  function overlayFree(t) {
+    const pr = projector(freeCam, 0, 0, W, H), seg = tl.segs[ev.seg.base], R = plan ? plan.shots[ev.seg.base] : null, path = R ? R.path : eyePath(seg);
+    const line = (a, b) => { if (a && b) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); } };
+    // 这个镜头的机位路径：绿 = 拍得了，红 = 够不着 / 超限位 / 干涉
+    ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (let i = 1; i < path.length; i++) { const bad = R && (R.flags[i] || R.flags[i - 1]); ctx.strokeStyle = !R ? 'rgba(124,196,255,0.9)' : bad ? 'rgba(255,110,110,0.95)' : 'rgba(95,208,138,0.9)'; line(pr(path[i - 1]), pr(path[i])); }
+    const dot = (p, r, c) => { const q = pr(p); if (q) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(q[0], q[1], r, 0, 6.2832); ctx.fill(); } };
+    dot(path[0], 5, 'rgba(232,237,242,0.95)'); dot(path[path.length - 1], 5, 'rgba(232,237,242,0.45)');
+    // 这一刻的摄影机：视线和视锥
+    const eu = Reel.eyeUp(cam, cam.target), E = eu.eye, f = [cam.target[0] - E[0], cam.target[1] - E[1], cam.target[2] - E[2]], fl = Math.hypot(f[0], f[1], f[2]) || 1; f[0] /= fl; f[1] /= fl; f[2] /= fl;
+    let r = [f[1] * eu.up[2] - f[2] * eu.up[1], f[2] * eu.up[0] - f[0] * eu.up[2], f[0] * eu.up[1] - f[1] * eu.up[0]]; const rl = Math.hypot(r[0], r[1], r[2]) || 1; r = r.map(v => v / rl);
+    const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]], d = 0.16, th = Math.tan(cam.fov * Math.PI / 360) * d, tw = th * W / H;
+    const cs = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => pr([E[0] + f[0] * d + r[0] * tw * a + u[0] * th * b, E[1] + f[1] * d + r[1] * tw * a + u[1] * th * b, E[2] + f[2] * d + r[2] * tw * a + u[2] * th * b])), e0 = pr(E);
+    ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,122,26,0.95)'; cs.forEach((c, i) => { line(e0, c); line(c, cs[(i + 1) % 4]); });
+    ctx.setLineDash([6, 5]); line(e0, pr(cam.target)); ctx.setLineDash([]);
+    dot(cam.target, 4, '#ff7a1a');
+    // 小窗：摄影机拍到的画面
+    const x = PIP[0] * W, y = PIP[1] * H, w = PIP[2] * W, h = PIP[3] * H;
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.textBaseline = 'alphabetic'; ctx.font = '600 13px ' + FONT; ctx.fillStyle = 'rgba(232,237,242,0.95)'; ctx.fillText('摄影机画面', x + 10, y + 20);
+    // 这一刻的状态
+    let txt, bad = false;
+    if (!plan) txt = '自由镜头：只画机位路径，不检查机械臂';
+    else if (armNow.flag & 3) { txt = '这一刻：' + FLAGTXT(armNow.flag); bad = true; }
+    else if (armNow.hits.length) { txt = '这一刻干涉：' + [...new Set(armNow.hits.map(ReelArm.hitText))].slice(0, 3).join('、'); bad = true; }
+    else txt = `这一刻无干涉 · 离台面和主体最近 ${(armNow.clr * 100).toFixed(1)} cm`;
+    ctx.font = '600 14px ' + FONT; const tw2 = ctx.measureText(txt).width;
+    ctx.fillStyle = 'rgba(11,13,16,0.72)'; ctx.fillRect(x + w - tw2 - 20, y + h + 8, tw2 + 20, 28);
+    ctx.fillStyle = bad ? '#ff8585' : plan ? '#5fd08a' : 'rgba(139,151,165,0.95)'; ctx.fillText(txt, x + w - tw2 - 10, y + h + 27);
+    if (plan) { const k = plan.takes.find(q => q.seg === ev.seg.base); if (!k.ok) { const t2 = '整个镜头：' + k.issues.join('；'), w2 = ctx.measureText(t2).width; ctx.fillStyle = 'rgba(11,13,16,0.72)'; ctx.fillRect(x + w - w2 - 20, y + h + 40, w2 + 20, 28); ctx.fillStyle = '#ff8585'; ctx.fillText(t2, x + w - w2 - 10, y + h + 59); } }
+  }
+  function hudBar(t) {
     ctx.font = '600 15px ' + FONT; ctx.fillStyle = 'rgba(232,237,242,0.92)'; ctx.fillText(ev.seg.name, 40, H - 62);
     const r = ev.seg.clip ? ev.rate : ev.pRate * (ev.seg.t1 - ev.seg.t0), mag = Math.abs(r);   // 静物没有素材时间，显示“相对平均速度的倍数”
     ctx.font = '700 30px ui-monospace, "SF Mono", Menlo, Consolas, monospace'; ctx.fillStyle = r < 0 ? '#7cc4ff' : '#ff7a1a';
@@ -175,10 +239,9 @@
     for (const b of bts) { const x = x0 + (x1 - x0) * b.t / tl.dur, passed = b.t <= t + 1e-6; ctx.beginPath(); ctx.arc(x, y, b.strong ? 4.5 : 2.2, 0, 6.2832); ctx.fillStyle = b.cut ? (passed ? '#ff7a1a' : 'rgba(255,122,26,0.45)') : (passed ? 'rgba(232,237,242,0.95)' : 'rgba(232,237,242,0.32)'); ctx.fill(); }
     const px = x0 + (x1 - x0) * t / tl.dur, pulse = Math.max(0, 1 - ev.sinceBeat / 0.16);
     ctx.fillStyle = '#fff'; ctx.fillRect(px - 1, y - 9 - 4 * pulse, 2, 18 + 8 * pulse);
-    ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(W / 2 - 9, H / 2); ctx.lineTo(W / 2 + 9, H / 2); ctx.moveTo(W / 2, H / 2 - 9); ctx.lineTo(W / 2, H / 2 + 9); ctx.stroke();
   }
   function frame(t, n) {
-    n = Math.max(1, n | 0);
+    n = S.view === 'free' ? 1 : Math.max(1, n | 0);   // 自由视角是工作视图，不做运动模糊
     for (let i = 0; i < n; i++) { drawScene(Math.min(t + SHUTTER * i / n, tl.dur)); ctx.globalAlpha = 1 / (i + 1); ctx.drawImage(glc, 0, 0, W, H); }
     ctx.globalAlpha = 1; overlay(t);
   }
@@ -201,7 +264,7 @@
 
   // ---- 面板：镜头 ----
   function setStatus(kind, text) { const s = $('#shotStatus'); if (s) { s.className = 'status ' + kind; s.textContent = text; } }
-  function refreshShotStatus() { const s = shotStatus(S.sel); setStatus(s.st, s.text); }
+  function refreshShotStatus() { const s = shotStatus(S.sel); setStatus(s.st, s.text); const f = $('#fixRow'); if (f) f.hidden = s.st !== 'bad'; }
   const fmt = (v, step) => step < 1 ? v.toFixed(step < 0.1 ? 2 : 1) : String(Math.round(v));
   function slider(id, label, key, get, set) {
     const R = SS.RANGE[key], inp = el('input', { type: 'range', id, min: R[0], max: R[1], step: R[2], value: get() }), o = el('output', { textContent: fmt(get(), R[2]) + R[3] });
@@ -212,6 +275,11 @@
     const p = $('#pane-shot'), i = S.sel, sh = script.shots[i], base = SS.isBase(sh), g = tl.segs[i]; p.textContent = '';
     const stt = shotStatus(i);
     p.append(el('div', { id: 'shotStatus', className: 'status ' + stt.st, textContent: stt.text }));
+    if (plan) {
+      const fb = el('button', { type: 'button', id: 'fixBtn', textContent: '自动修正这个镜头' }), fi = el('span', { className: 'note', id: 'fixInfo', textContent: '在原机位附近找一个拍得了的版本，尽量少改构图。' });
+      fb.addEventListener('click', () => runRepair(S.sel));
+      p.append(el('div', { className: 'fix', id: 'fixRow', hidden: stt.st !== 'bad' }, [fb, fi]));
+    }
     const nm = el('input', { type: 'text', id: 'sh-name', value: sh.name || '' }); nm.addEventListener('input', () => edit(n => { n.shots[i].name = nm.value; }));
     p.append(el('div', { className: 'row wide' }, [el('label', { htmlFor: 'sh-name', textContent: '名字' }), nm]));
     p.append(slider('sh-beats', '占几拍', 'beats', () => sh.beats, v => edit(n => { n.shots[i].beats = v; })));
@@ -255,7 +323,7 @@
   // ---- 直接拖画面改机位：左右 = 方位，上下 = 俯仰，滚轮 = 距离，按住 Shift 左右 = 倾斜 ----
   const endsBox = $('#ends'), endBt = [$('#end0'), $('#end1')];
   function baseSel() { return SS.baseIndex(script, S.sel); }
-  function syncEnds() { endsBox.hidden = !script || !SS.isBase(script.shots[S.sel]); endBt.forEach((b, k) => b.setAttribute('aria-pressed', String(S.end === k))); }
+  function syncEnds() { endsBox.hidden = S.view === 'free' || !script || !SS.isBase(script.shots[S.sel]); $('#freeHint').hidden = S.view !== 'free'; endBt.forEach((b, k) => b.setAttribute('aria-pressed', String(S.end === k))); }
   function gotoEnd() { const g = tl.segs[S.sel]; S.playing = false; seek(S.end ? g.t1 - 1e-3 : g.t0 + 1e-4); }
   endBt.forEach((b, k) => b.addEventListener('click', () => { S.end = k; syncEnds(); gotoEnd(); }));
   function nudgeCam(key, delta) {
@@ -268,6 +336,66 @@
     const c = script.shots[i].cam; if (!c) return;
     for (const key of ['az', 'el', 'dist', 'roll']) [0, 1].forEach(e2 => { const inp = $(`#cam-${key}-${e2}`); if (inp && c[key]) { inp.value = c[key][e2]; inp.nextElementSibling.textContent = fmt(c[key][e2], SS.RANGE[key][2]); } });
   }
+  // 自由视角：拖动旋转、滚轮或双指缩放、双击复位（不改脚本）
+  const touches = new Map(); let pinch = 0;
+  const zoomFree = k => { freeCam.dist = Math.min(7, Math.max(0.5, freeCam.dist * k)); };
+  out.addEventListener('pointerdown', e => {
+    if (S.view !== 'free') return; e.stopImmediatePropagation();
+    touches.set(e.pointerId, [e.clientX, e.clientY]); out.setPointerCapture(e.pointerId); out.classList.add('dragging'); pinch = 0;
+  });
+  out.addEventListener('pointermove', e => {
+    if (S.view !== 'free') return; e.stopImmediatePropagation();
+    const p0 = touches.get(e.pointerId); if (!p0) return;
+    if (touches.size >= 2) {
+      touches.set(e.pointerId, [e.clientX, e.clientY]); const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      if (pinch > 0 && d > 0) zoomFree(pinch / d); pinch = d; return;
+    }
+    const k = 1280 / out.getBoundingClientRect().width;   // 小屏上同样的手指位移转得一样多
+    freeCam.az -= (e.clientX - p0[0]) * 0.0045 * k; freeCam.el = Math.min(1.5, Math.max(0.03, freeCam.el + (e.clientY - p0[1]) * 0.0035 * k));
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+  });
+  const endFree = e => { if (S.view !== 'free') return; e.stopImmediatePropagation(); touches.delete(e.pointerId); pinch = 0; if (!touches.size) out.classList.remove('dragging'); };
+  out.addEventListener('pointerup', endFree); out.addEventListener('pointercancel', endFree);
+  out.addEventListener('wheel', e => { if (S.view !== 'free') return; e.stopImmediatePropagation(); e.preventDefault(); zoomFree(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+  out.addEventListener('dblclick', () => { if (S.view === 'free') resetFree(); });
+  function setView(v) {
+    S.view = v; touches.clear(); out.classList.toggle('free', v === 'free'); out.classList.remove('dragging');
+    $('#vcam').setAttribute('aria-pressed', String(v === 'cam')); $('#vfree').setAttribute('aria-pressed', String(v === 'free'));
+    out.setAttribute('aria-label', v === 'free' ? '自由视角：整个拍摄现场，右上角小窗是摄影机画面' : '摄影机画面，右上角小窗是机械臂');
+    syncEnds();
+  }
+  $('#vcam').addEventListener('click', () => setView('cam')); $('#vfree').addEventListener('click', () => setView('free'));
+
+  // ---- 自动修正：机械臂拍不了的镜头，在原机位附近找一个拍得了的 ----
+  let repairing = false;
+  function runRepair(sel) {
+    if (repairing || !plan) return;
+    const i = SS.baseIndex(script, sel), say = t => { const f = $('#fixInfo'); if (f) f.textContent = t; }, bt = $('#fixBtn');
+    repairing = true; if (bt) bt.disabled = true; clearTimeout(pending);
+    const it = ReelArm.repair(tl.segs[i], rootAt, plan.opt), was = script.shots[i].cam, D = 180 / Math.PI;
+    const finish = r => {
+      repairing = false; const b2 = $('#fixBtn'); if (b2) b2.disabled = false;
+      if (!r.ok) { say(`试了 ${r.evals} 个机位，原机位附近没有拍得了的。可以到“场景”里点“自动找摆位”，或者手动把机位拉近机械臂一侧。`); return; }
+      const n = SS.clone(script), c = n.shots[i].cam, diff = [];
+      for (const [k, name, unit] of [['dist', '距离', ' m'], ['el', '俯仰', '°'], ['az', '方位', '°']]) {
+        const Rg = SS.RANGE[k], nv = r.cam[k].map(v => { const x = k === 'dist' ? v : v * D; return +Math.min(Rg[1], Math.max(Rg[0], Math.round(x / Rg[2]) * Rg[2])).toFixed(3); });
+        [0, 1].forEach(e2 => { if (Math.abs(nv[e2] - was[k][e2]) > 1e-6) diff.push(`${name}${e2 ? '终点' : '起点'} ${fmt(was[k][e2], Rg[2])} → ${fmt(nv[e2], Rg[2])}${unit}`); });
+        c[k] = nv;
+      }
+      const errs = applyScript(n, { sel });
+      if (errs.length) { say('修正出来的机位不合规：' + errs[0]); return; }
+      seek(tl.segs[sel].t0 + 1e-4);
+      const ok = shotStatus(sel).st !== 'bad';
+      setStatus(shotStatus(sel).st, (ok ? '已自动修正（可撤销）：' : '改了机位但仍有问题：') + diff.join('，') + '。' + shotStatus(sel).text);
+    };
+    const step = () => {
+      const t0 = performance.now(); let r;
+      do { r = it.next().value; } while (!r.done && performance.now() - t0 < 60);
+      if (r.done) finish(r); else { say(`正在试第 ${r.evals} 个机位……`); setTimeout(step, 0); }
+    };
+    say('正在找拍得了的机位……'); setTimeout(step, 0);
+  }
+
   out.addEventListener('pointerdown', e => { if (!script || !SS.isBase(script.shots[S.sel])) return; drag = { x: e.clientX, y: e.clientY, ax: 0, ay: 0 }; out.setPointerCapture(e.pointerId); out.classList.add('dragging'); gotoEnd(); });
   out.addEventListener('pointermove', e => {
     if (!drag) return;
@@ -401,13 +529,13 @@
 
   const ready = load().then(() => {
     SCRIPTS.forEach(n => pick.append(el('option', { value: n, textContent: examples[n].name })));
-    openScript(S.name); msg.hidden = true; frame(0, 1);
+    openScript(S.name); setView(S.view); msg.hidden = true; frame(0, 1);
     if (Q.get('render') !== '1') { S.playing = !matchMedia('(prefers-reduced-motion: reduce)').matches && Q.get('autoplay') !== '0'; last = performance.now(); requestAnimationFrame(loop); }
     return true;
   }).catch(e => { msg.textContent = '加载失败：' + e.message; throw e; });
 
   window.__reel = {
-    ready, S, fps: FPS, get tl() { return tl; }, get plan() { return plan; }, get script() { return script; }, frame, applyScript, openScript,
+    ready, S, fps: FPS, get tl() { return tl; }, get plan() { return plan; }, get script() { return script; }, get armNow() { return armNow; }, freeCam, frame, applyScript, openScript, setView, runRepair,
     shot(i, n) { frame(i / FPS, n || 12); return out.toDataURL('image/jpeg', 0.92).slice(23); },
   };
 })();

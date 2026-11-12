@@ -36,3 +36,32 @@ test('导出的 CSV：7 列、时间递增、时长等于真机时长', () => {
   const last = rows[rows.length - 1].split(',').map(Number); assert.equal(last.length, 7); assert.ok(Math.abs(last[0] - t.realDur) < 0.03);
   assert.ok(rows.slice(1).every(r => r.split(',').every(v => Number.isFinite(+v))));
 });
+
+// ---- 干涉检测与自动修正 ----
+import { load as loadScript, rootAt as rootAt2, R as R2, A as A2, S as S2, clipDur as clipDur2, readScript as readScript2 } from './_studio.mjs';
+function planOf(sc) { const c = S2.compile(sc, clipDur2), tl2 = R2.build(c.shots, c.bpm, { attack: c.attack }); const o = { base: c.rig.base, mount: c.rig.mount, lookUp: c.subject.lookUp, subjectR: c.subject.radius }; return { tl: tl2, o, plan: A2.plan(tl2, rootAt2, o) }; }
+
+test('干涉检测：示例脚本全程没有干涉；把机位怼到主体上会报“碰到主体”，并指出是哪一段', () => {
+  const ok = planOf(readScript2('duck-arm'));
+  for (let t = 0.05; t < ok.tl.dur; t += 0.31) assert.equal(A2.stateAt(ok.plan, t).mask, 0, `t=${t.toFixed(2)} 不该有干涉`);
+  // 面板不让把距离设到 0.15 米以内，这里绕过校验直接改时间轴，造一个镜头贴到主体上的情况
+  const c0 = S2.compile(readScript2('duck-arm'), clipDur2), tlb = R2.build(c0.shots, c0.bpm, { attack: c0.attack });
+  tlb.segs[0].cam = Object.assign({}, tlb.segs[0].cam, { dist: [0.3, 0.1] });
+  const ob = { base: c0.rig.base, mount: c0.rig.mount, lookUp: c0.subject.lookUp, subjectR: c0.subject.radius };
+  const bad = { tl: tlb, plan: A2.plan(tlb, rootAt2, ob) }, take = bad.plan.takes[0];
+  assert.equal(take.ok, false); assert.ok(take.issues.some(x => /干涉/.test(x) && /主体/.test(x)), take.issues.join('；'));
+  const st = A2.stateAt(bad.plan, bad.tl.segs[0].t1 - 0.01); assert.ok(st.mask !== 0 && st.hits.some(h => h.what === 'subject'));
+});
+test('自动修正：够不着的镜头能改成拍得了的，而且只在原机位附近小改', () => {
+  const sc = readScript2('duck-arm'); sc.shots[0].cam.dist = [0.52, 1.8];
+  const b = planOf(sc); assert.equal(b.plan.takes[0].ok, false);
+  let last; for (const step of A2.repair(b.tl.segs[0], rootAt2, b.o)) last = step;
+  assert.ok(last.done && last.ok && last.changed, JSON.stringify({ ok: last.ok, evals: last.evals }));
+  assert.ok(last.cam.dist[1] < 1.8 && last.cam.dist[1] > 0.5, '终点距离应该被拉近到够得着的范围，但不该离谱：' + last.cam.dist[1]);
+  assert.ok(Math.abs(last.cam.dist[0] - 0.52) < 0.2 && Math.abs(last.cam.az[0] - b.tl.segs[0].cam.az[0]) < 0.5, '起点基本不动');
+  assert.equal(A2.planShot(Object.assign({}, b.tl.segs[0], { cam: Object.assign({}, b.tl.segs[0].cam, last.cam) }), rootAt2, Object.assign({}, A2.DEF, b.o)).ok, true);
+});
+test('自动修正：本来就没问题的镜头不会被改', () => {
+  const b = planOf(readScript2('duck-arm')); let last; for (const step of A2.repair(b.tl.segs[0], rootAt2, b.o)) last = step;
+  assert.ok(last.ok && !last.changed);
+});

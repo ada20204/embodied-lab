@@ -77,7 +77,9 @@
   .errs { color: var(--bad); white-space: pre-wrap; margin: 0; font-size: 13px; } .errs:empty { display: none; }
   .note { color: var(--dim); margin: 0; font-size: 12.5px; }
   [hidden] { display: none !important; }
-  #out { touch-action: pan-y; cursor: grab; } #out.dragging { cursor: grabbing; }
+  #out { touch-action: pan-y; cursor: grab; } #out.dragging { cursor: grabbing; } #out.free { touch-action: none; }
+  .seg { display: inline-flex; } .seg button:first-child { border-radius: 8px 0 0 8px; } .seg button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+  .fix { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .fix .note { flex: 1 1 160px; }
   .ends { position: absolute; left: 10px; top: 10px; display: flex; gap: 4px; align-items: center; background: rgba(11,13,16,0.72); border: 1px solid var(--line); border-radius: 9px; padding: 4px 6px; font-size: 12px; color: var(--dim); }
   .ends button { min-height: 28px; padding: 2px 9px; font-size: 12px; }
   .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
@@ -103,6 +105,7 @@
         <canvas id="out" width="1280" height="720" aria-label="摄影机画面，右上角小窗是机械臂"></canvas>
         <canvas id="gl" aria-hidden="true"></canvas>
         <div class="ends" id="ends" hidden><span>拖画面改</span><button type="button" id="end0" aria-pressed="true">起点</button><button type="button" id="end1" aria-pressed="false">终点</button></div>
+        <div class="ends" id="freeHint" hidden>拖动旋转 · 滚轮或双指缩放 · 双击复位</div>
         <div id="msg">正在加载模型和动作……</div>
       </div>
       <div class="bar">
@@ -110,6 +113,7 @@
         <span id="tc">0.00 / 0.00</span>
         <button id="undo" type="button" disabled title="撤销上一步修改（Ctrl/⌘ + Z）">↶ 撤销</button>
         <span class="spacer"></span>
+        <span class="seg" role="group" aria-label="看哪个视角"><button id="vcam" type="button" aria-pressed="true" title="摄影机拍到的画面，也就是成片">镜头视角</button><button id="vfree" type="button" aria-pressed="false" title="站在旁边看整个现场：机械臂、机位路径、干涉">自由视角</button></span>
         <button id="lock" type="button" aria-pressed="true" title="镜头注视点每帧跟着主体">稳帧</button>
         <button id="blur" type="button" aria-pressed="true" title="每帧多画几次再叠加">运动模糊</button>
         <button id="hud" type="button" aria-pressed="true" title="画面里的速率和节拍字幕">字幕</button>
