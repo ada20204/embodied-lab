@@ -27,7 +27,7 @@
     { name: '倒放 · 滚回来', rev: true, beats: 2, k: 3.0 },
     { name: '坐下 · 俯拍压下', clip: 'sit_stand', s: [1.2, 3.4], beats: 2, k: 3.0, cam: { az: [0.9, 2.2], el: [1.15, 0.32], dist: [1.2, 0.66], fov: [32, 28], roll: [-0.35, 0] } },
     { name: '倒放 · 站起', rev: true, beats: 2, k: 3.0 },
-    { name: '低头抓地 · 贴地推近', clip: 'ground_pick', s: [1.0, 3.0], beats: 2, k: 3.2, cam: { az: [3.6, 2.2], el: [0.3, 0.04], dist: [1.0, 0.4], fov: [30, 24], roll: [0.2, 0] } },
+    { name: '低头抓地 · 贴地推近', clip: 'ground_pick', s: [1.0, 3.0], beats: 2, k: 3.2, cam: { az: [1.7, -0.3], el: [0.34, 0.1], dist: [1.05, 0.62], fov: [30, 26], roll: [0.2, 0] } },
     { name: '倒放', rev: true, beats: 2, k: 3.0 },
     { name: 'S 形走 · 大环绕收尾', clip: 'walk_s', s: [1.5, 7.0], beats: 6, k: 3.6, cam: { az: [-1.2, 2.6], el: [0.08, 0.34], dist: [0.45, 1.25], fov: [26, 34], roll: [0.16, 0] } },
   ];

@@ -48,6 +48,7 @@ def beat_track(path, beats, dur, sr=44100):
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--url', required=True); ap.add_argument('--out', required=True)
+    ap.add_argument('--range', type=int, nargs=2, help='只渲染这一段帧（无音轨），用来补拍某个镜头')
     ap.add_argument('--samples', type=int, default=8); ap.add_argument('--workers', type=int, default=2); ap.add_argument('--bpm', type=int, default=100)
     a = ap.parse_args()
     url = a.url + ('&' if '?' in a.url else '?') + f'render=1&bpm={a.bpm}'
@@ -56,6 +57,13 @@ async def main():
         br = await p.chromium.launch(args=['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
         pg = await br.new_page(); await pg.goto(url); await pg.evaluate('__reel.ready')
         info = await pg.evaluate('(()=>{const t=__reel.tl;return {dur:t.dur,beats:Reel.beats(t)}})()'); await br.close()
+    if a.range:
+        r0, r1 = a.range; mid = (r0 + r1) // 2; base = os.path.splitext(a.out)[0]; parts = [base + '.a.mp4', base + '.b.mp4']
+        await asyncio.gather(worker(url, r0, mid, a.samples, parts[0]), worker(url, mid, r1, a.samples, parts[1]))
+        lst = base + '.txt'; open(lst, 'w').write(''.join(f"file '{os.path.abspath(x)}'\n" for x in parts))
+        subprocess.check_call(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', lst, '-c', 'copy', base + '.tmp.mp4']); os.replace(base + '.tmp.mp4', a.out)
+        for x in parts + [lst]: os.remove(x)
+        print('完成', a.out); return
     hold = 0.8                                           # 结尾多停一会儿
     total = math.ceil((info['dur'] + hold) * 30)
     base = os.path.splitext(a.out)[0]
