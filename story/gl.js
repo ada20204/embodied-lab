@@ -148,7 +148,7 @@
   const PFS = `#version 300 es
   precision highp float; uniform vec4 uId; out vec4 o; void main(){ o = uId; }`;
   const GVS = `#version 300 es
-  in vec3 aPos; uniform mat4 uVP; uniform vec2 uOff; out vec3 vW; out vec2 vUV; void main(){ vec3 p=aPos+vec3(uOff,0.0); vW=p; gl_Position=uVP*vec4(p,1.0); }`;
+  in vec3 aPos; uniform mat4 uVP; uniform vec2 uOff; uniform float uScale; out vec3 vW; out vec2 vUV; void main(){ vec3 p=aPos*vec3(uScale,uScale,1.0)+vec3(uOff,0.0); vW=p; gl_Position=uVP*vec4(p,1.0); }`;
   const GFS = `#version 300 es
   precision highp float; in vec3 vW; uniform vec3 uCol; uniform float uR; uniform vec2 uCen; out vec4 o;
   void main(){ float d=length(vW.xy-uCen); float a=(1.0-smoothstep(uR*0.35,uR,d))*0.55; o=vec4(uCol,a); }`;
@@ -277,7 +277,7 @@
       },
       add(node) { st.roots.push(node); return node; },
       resize() {
-        const dpr = Math.min(window.devicePixelRatio || 1, 2), w = Math.max(2, Math.round(canvas.clientWidth * dpr)), h = Math.max(2, Math.round(canvas.clientHeight * dpr));
+        const dpr = opt.pixelRatio || Math.min(window.devicePixelRatio || 1, 2), w = Math.max(2, Math.round(canvas.clientWidth * dpr)), h = Math.max(2, Math.round(canvas.clientHeight * dpr));
         if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
       },
       viewProj(c, asp) {
@@ -289,7 +289,14 @@
         st.eye = eye;
         const P = M4.perspective(fov, asp, 0.05, 40);
         P[8] = -(c.sx || 0); P[9] = -(c.sy || 0); // 把被摄物平移到屏幕右侧/上方，给文字卡片让位
-        return M4.mul(P, M4.lookAt(eye, c.target, [0, 0, 1]));
+        let up = [0, 0, 1];
+        if (c.roll) {   // 横滚（荷兰角）：让“上”绕视线方向转 roll 弧度
+          const f = [c.target[0] - eye[0], c.target[1] - eye[1], c.target[2] - eye[2]];
+          let r = [f[1], -f[0], 0]; const rl = Math.hypot(r[0], r[1]) || 1; r = [r[0] / rl, r[1] / rl, 0];
+          const cr = Math.cos(c.roll), sr = Math.sin(c.roll);
+          up = [sr * r[0], sr * r[1], cr];
+        }
+        return M4.mul(P, M4.lookAt(eye, c.target, up));
       },
       /** 点选：(cx, cy) 为相对画布左上角的 CSS 像素；参数同 render。离屏用唯一颜色画一遍，读该像素，返回被点中的节点（没点中返回 null） */
       pick(cx, cy, o) {
@@ -329,13 +336,15 @@
         const roots = o.roots || st.roots, showGrid = o.grid !== undefined ? o.grid : st.grid;
         // 地面
         if (showGrid) {
-          const gc = o.gridCenter || [0, 0], gstep = 0.25;   // 网格按格距取整，线条看起来固定在世界里；淡出以真实中心为准
+          const gs = o.gridScale || 1, gcol = o.gridColor || [0.30, 0.38, 0.46];   // gridScale 缩放格距和范围（小模型用小格子）
+          const gc = o.gridCenter || [0, 0], gstep = 0.25 * gs;   // 网格按格距取整，线条看起来固定在世界里；淡出以真实中心为准
           gl.useProgram(GP); gl.uniformMatrix4fv(gl.getUniformLocation(GP, 'uVP'), false, vp);
           gl.uniform2f(gl.getUniformLocation(GP, 'uOff'), Math.round(gc[0] / gstep) * gstep, Math.round(gc[1] / gstep) * gstep); gl.uniform2f(gl.getUniformLocation(GP, 'uCen'), gc[0], gc[1]);
           gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
-          gl.uniform3f(gl.getUniformLocation(GP, 'uCol'), 0.30, 0.38, 0.46); gl.uniform1f(gl.getUniformLocation(GP, 'uR'), 3.4);
+          gl.uniform1f(gl.getUniformLocation(GP, 'uScale'), gs);
+          gl.uniform3f(gl.getUniformLocation(GP, 'uCol'), gcol[0], gcol[1], gcol[2]); gl.uniform1f(gl.getUniformLocation(GP, 'uR'), 3.4 * gs);
           gl.bindVertexArray(gridVao); gl.drawArrays(gl.LINES, 0, gridN);
-          gl.useProgram(SP); gl.uniformMatrix4fv(gl.getUniformLocation(SP, 'uVP'), false, vp); gl.uniform2f(gl.getUniformLocation(SP, 'uOff'), gc[0], gc[1]);
+          gl.useProgram(SP); gl.uniform1f(gl.getUniformLocation(SP, 'uScale'), 1); gl.uniformMatrix4fv(gl.getUniformLocation(SP, 'uVP'), false, vp); gl.uniform2f(gl.getUniformLocation(SP, 'uOff'), gc[0], gc[1]);
           gl.uniform3f(gl.getUniformLocation(SP, 'uCol'), 0, 0, 0);
           gl.bindVertexArray(quadVao);
           st.shadows.forEach(s => { gl.uniform2f(gl.getUniformLocation(SP, 'uC'), s.c[0], s.c[1]); gl.uniform1f(gl.getUniformLocation(SP, 'uR'), s.r); gl.drawArrays(gl.TRIANGLES, 0, 6); });
