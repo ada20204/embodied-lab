@@ -10,14 +10,14 @@
   const Reel = root.Reel || (typeof require !== 'undefined' ? require('./reel.js') : null);
   const D2R = Math.PI / 180, M = 96;                     // 每个镜头沿进度取 M+1 个点
   const DEF = { base: [0.05, -0.9, 0.3], mount: 'invert',   // 底座垫高 30 cm、离主体约 0.9 m、Pocket 倒挂：试算里这样全部镜头可达且放慢倍数最小
-    lookUp: 0.03, duckR: 0.11, speedPct: 100 };
+    lookUp: 0.03, subjectR: 0.11, speedPct: 100 };
 
   /** 进度 p 时镜头在机械臂坐标系里的位姿（4×4，行主序，KIN 的约定） */
   function lensPose(seg, p, rootAt, o) {
-    const s = seg.s0 + (seg.s1 - seg.s0) * p, r = rootAt(seg.clip, s), c = seg.cam, L = k => c[k] ? c[k][0] + (c[k][1] - c[k][0]) * p : 0;
+    const s = seg.s0 + (seg.s1 - seg.s0) * p, r = seg.clip ? rootAt(seg.clip, s) : [0, 0, 0], c = seg.cam, L = k => c[k] ? c[k][0] + (c[k][1] - c[k][0]) * p : 0;
     const tgt = [r[0], r[1], r[2] + o.lookUp];
     const eu = Reel.eyeUp({ az: L('az'), el: L('el'), dist: L('dist'), roll: L('roll') }, tgt), b = o.base;
-    return { T: KIN.lookPose([eu.eye[0] - b[0], eu.eye[1] - b[1], eu.eye[2] - b[2]], [tgt[0] - b[0], tgt[1] - b[1], tgt[2] - b[2]], eu.up), duck: [r[0] - b[0], r[1] - b[1], r[2] - b[2]] };
+    return { T: KIN.lookPose([eu.eye[0] - b[0], eu.eye[1] - b[1], eu.eye[2] - b[2]], [tgt[0] - b[0], tgt[1] - b[1], tgt[2] - b[2]], eu.up), subj: [tgt[0] - b[0], tgt[1] - b[1], tgt[2] - b[2]] };
   }
   const segDist = (a, b, p) => {   // 点到线段的距离
     const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], ap = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
@@ -34,7 +34,7 @@
       for (let j = 0; j < 6; j++) if (Math.abs(r.q[j]) > KIN.LIM[j] * D2R) limit++;
       for (const c of KIN.capsules(r.F)) {
         minClr = Math.min(minClr, Math.min(c.a[2], c.b[2]) + o.base[2] - c.r);                    // 离地面
-        minClr = Math.min(minClr, segDist(c.a, c.b, lp.duck) - c.r - o.duckR);                      // 离小鸭子（按一个球估）
+        minClr = Math.min(minClr, segDist(c.a, c.b, lp.subj) - c.r - o.subjectR);                   // 离主体（按注视点处的一个球估）
       }
       minSin = Math.min(minSin, Math.abs(Math.sin(r.q[4])));
       Q.push(r.q); prev = r.q;
@@ -57,7 +57,12 @@
         if (!best || R.cost < best.cost) best = R;
       }
       if (!best) best = Object.assign(runPath(seg, KIN.seedsFor(T0)[0], rootAt, o), { cost: Infinity });
-      best.ok = best.unreach === 0 && best.limit === 0 && best.minClr >= 0.01;
+      best.issues = [];
+      if (best.unreach) best.issues.push(`够不着（${Math.round(100 * best.unreach / (M + 1))}% 的路径）`);
+      if (best.limit) best.issues.push('关节超出限位');
+      if (!best.unreach && best.minClr < 0.01) best.issues.push(best.minClr < 0 ? '会碰到主体或台面' : '离主体或台面太近');
+      best.warn = !best.unreach && best.minSin < 0.15 ? ['接近手腕奇异位形，实际会抖或很慢'] : [];
+      best.ok = best.issues.length === 0;
       shots[i] = best;
     });
     const P = { tl, opt: o, shots };
@@ -76,7 +81,7 @@
     P.takes = Object.keys(shots).map(k => {   // 每个镜头拍一条：取用到它的各段里最苛刻的放慢倍数
       const i = +k, mine = tl.segs.map((g, j) => g.base === i ? j : -1).filter(j => j >= 0);
       const slow = Math.max(...mine.map(j => P.segs[j].slow)), seg = tl.segs[i];
-      return { seg: i, name: seg.name, clip: seg.clip, ok: shots[i].ok, minClr: shots[i].minClr, unreach: shots[i].unreach, slow, realDur: (seg.t1 - seg.t0) * slow };
+      return { seg: i, name: seg.name, clip: seg.clip, ok: shots[i].ok, issues: shots[i].issues, warn: shots[i].warn, minClr: shots[i].minClr, unreach: shots[i].unreach, slow, realDur: (seg.t1 - seg.t0) * slow };
     });
     P.slow = Math.max(...P.takes.map(t => t.slow)); P.ok = P.takes.every(t => t.ok);
     return P;

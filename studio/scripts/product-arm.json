@@ -1,0 +1,16 @@
+{
+  "name": "静物 · 产品四连拍",
+  "note": "主体不动，全靠机械臂运镜",
+  "bpm": 90,
+  "attack": 0.15,
+  "subject": {"type": "product"},
+  "rig": {"arm": true, "base": [0.05, -0.9, 0.3], "mount": "invert", "fov": 54},
+  "shots": [
+    {"name": "弧形环绕", "cam": {"az": [-55, 40], "el": [14, 14], "dist": [0.42, 0.42], "roll": [0, 0]}, "beats": 4, "ease": 2.6},
+    {"name": "倒放 · 绕回", "reverse": true, "beats": 2, "ease": 3},
+    {"name": "低机位推近", "cam": {"az": [10, 10], "el": [6, 10], "dist": [0.56, 0.3], "roll": [0, 0]}, "beats": 2, "ease": 3},
+    {"name": "倒放 · 拉开", "reverse": true, "beats": 2, "ease": 3},
+    {"name": "升起揭示", "cam": {"az": [-30, 20], "el": [2, 38], "dist": [0.4, 0.46], "roll": [6, 0]}, "beats": 4, "ease": 2.8},
+    {"name": "俯拍收尾", "cam": {"az": [20, -25], "el": [38, 72], "dist": [0.46, 0.5], "roll": [0, 0]}, "beats": 4, "ease": 2.4}
+  ]
+}

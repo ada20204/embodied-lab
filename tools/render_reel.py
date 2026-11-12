@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""把 reel/ 页面逐帧渲染成 mp4（不实时：每帧画完再取，所以慢机器也能出顺滑成片）。
-用法：python3 tools/render_reel.py --url http://localhost:8765/embodied-lab/reel/ --out reel.mp4 [--samples 8] [--workers 2] [--bpm 100]
+"""把 Studio 页面逐帧渲染成 mp4（不实时：每帧画完再取，所以慢机器也能出顺滑成片）。
+用法：python3 tools/render_reel.py --url http://localhost:8765/embodied-lab/studio/ --out reel.mp4 [--script duck-arm 或 脚本文件.json] [--samples 8] [--workers 2]
 依赖：playwright（chromium）、ffmpeg、numpy。音轨是脚本自己合成的节拍（底鼓 + 换镜头时的扫频），没有用任何现成音乐。
 """
 import argparse, asyncio, base64, math, os, subprocess, sys, wave
@@ -9,7 +9,7 @@ import numpy as np
 ENC = ['-c:v', 'libx264', '-crf', '17', '-preset', 'medium', '-pix_fmt', 'yuv420p']
 
 
-async def worker(url, a, b, samples, path):
+async def worker(url, a, b, samples, path, script=None):
     from playwright.async_api import async_playwright
     tmp = path + '.part.mp4'
     ff = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', '30', '-c:v', 'mjpeg', '-i', '-', *ENC, tmp], stdin=subprocess.PIPE)
@@ -17,6 +17,7 @@ async def worker(url, a, b, samples, path):
         br = await p.chromium.launch(args=['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
         pg = await br.new_page(viewport={'width': 1300, 'height': 800})
         await pg.goto(url); await pg.evaluate('__reel.ready')
+        if script: await pg.evaluate('s => { const e = __reel.applyScript(s, { noStore: true }); if (e.length) throw new Error(e.join("; ")); }', script)
         for i in range(a, b):
             ff.stdin.write(base64.b64decode(await pg.evaluate(f'__reel.shot({i},{samples})')))
             if (i - a) % 30 == 0: print(f'[{a}-{b}] {i - a}/{b - a}', flush=True)
@@ -49,17 +50,20 @@ async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--url', required=True); ap.add_argument('--out', required=True)
     ap.add_argument('--range', type=int, nargs=2, help='只渲染这一段帧（无音轨），用来补拍某个镜头')
-    ap.add_argument('--samples', type=int, default=8); ap.add_argument('--workers', type=int, default=2); ap.add_argument('--bpm', type=int, default=100)
+    ap.add_argument('--samples', type=int, default=8); ap.add_argument('--workers', type=int, default=2); ap.add_argument('--script', help='示例脚本名（duck-arm / duck-free / product-arm）或一个脚本 json 文件')
     a = ap.parse_args()
-    url = a.url + ('&' if '?' in a.url else '?') + f'render=1&bpm={a.bpm}'
+    script = None; url = a.url + ('&' if '?' in a.url else '?') + 'render=1'
+    if a.script and os.path.exists(a.script): import json; script = json.load(open(a.script))
+    elif a.script: url += '&script=' + a.script
     from playwright.async_api import async_playwright
     async with async_playwright() as p:
         br = await p.chromium.launch(args=['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'])
         pg = await br.new_page(); await pg.goto(url); await pg.evaluate('__reel.ready')
+        if script: await pg.evaluate('s => { const e = __reel.applyScript(s, { noStore: true }); if (e.length) throw new Error(e.join("; ")); }', script)
         info = await pg.evaluate('(()=>{const t=__reel.tl;return {dur:t.dur,beats:Reel.beats(t)}})()'); await br.close()
     if a.range:
         r0, r1 = a.range; mid = (r0 + r1) // 2; base = os.path.splitext(a.out)[0]; parts = [base + '.a.mp4', base + '.b.mp4']
-        await asyncio.gather(worker(url, r0, mid, a.samples, parts[0]), worker(url, mid, r1, a.samples, parts[1]))
+        await asyncio.gather(worker(url, r0, mid, a.samples, parts[0], script), worker(url, mid, r1, a.samples, parts[1], script))
         lst = base + '.txt'; open(lst, 'w').write(''.join(f"file '{os.path.abspath(x)}'\n" for x in parts))
         subprocess.check_call(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', lst, '-c', 'copy', base + '.tmp.mp4']); os.replace(base + '.tmp.mp4', a.out)
         for x in parts + [lst]: os.remove(x)
@@ -69,7 +73,7 @@ async def main():
     base = os.path.splitext(a.out)[0]
     cuts = [round(total * k / a.workers) for k in range(a.workers + 1)]
     parts = [f'{base}.part{k}.mp4' for k in range(a.workers)]
-    await asyncio.gather(*[worker(url, cuts[k], cuts[k + 1], a.samples, parts[k]) for k in range(a.workers)])
+    await asyncio.gather(*[worker(url, cuts[k], cuts[k + 1], a.samples, parts[k], script) for k in range(a.workers)])
     lst = base + '.txt'; open(lst, 'w').write(''.join(f"file '{os.path.abspath(x)}'\n" for x in parts))
     wav = base + '.wav'; beat_track(wav, info['beats'], total / 30)
     tmp = base + '.tmp.mp4'

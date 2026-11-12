@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nova 拍摄 Studio</title>
+<style>
+  /* 布局：左边是画面和两条轨道，右边是一栏面板；窄屏时面板排到下面。单一深色外观（影棚监视器）。 */
+  :root {
+    color-scheme: dark;
+    --bg: #0c0e12; --panel: #141920; --raise: #1b222b; --line: #29323d; --ink: #e9eef3; --dim: #8d99a8;
+    --accent: #ff7a1a; --accent-ink: #ffd9bd; --rev: #7cc4ff; --ok: #5fd08a; --warn: #f2c14e; --bad: #ff8585;
+    --sans: -apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.55 var(--sans); }
+  .wrap { max-width: 1440px; margin: 0 auto; padding-block: 14px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  header { display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  header a { color: var(--dim); text-decoration: none; } header a:hover { color: var(--ink); }
+  h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: .01em; }
+  h2 { font-size: 13px; margin: 0 0 8px; color: var(--dim); font-weight: 600; letter-spacing: .04em; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 14px; align-items: start; }
+  @media (max-width: 1020px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .stagewrap { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #000; }
+  #out { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; max-width: 100%; }
+  #gl { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; opacity: 0; pointer-events: none; }
+  #msg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); background: var(--bg); padding: 16px; text-align: center; }
+  button, select, input, textarea { font: inherit; color: var(--ink); }
+  button, select, input[type="number"], input[type="text"] { background: var(--raise); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-height: 34px; }
+  button { cursor: pointer; } button:hover, select:hover { border-color: #3d4a59; }
+  button:disabled { opacity: .45; cursor: default; }
+  :is(button, select, input, textarea, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-ink); }
+  .bar { display: flex; gap: 8px 10px; align-items: center; flex-wrap: wrap; padding: 10px 0 8px; }
+  #tc { font: 13px var(--mono); color: var(--dim); min-width: 108px; }
+  .spacer { flex: 1 1 0; }
+  /* 轨道 */
+  .tracks { position: relative; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow-x: auto; }
+  .tracks-in { position: relative; min-width: 640px; padding: 8px 8px 10px; display: grid; gap: 6px; }
+  .track { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: stretch; }
+  .track > span { color: var(--dim); font-size: 12px; align-self: center; }
+  .lane { display: flex; gap: 2px; min-width: 0; }
+  .blk { min-width: 0; min-height: 44px; padding: 5px 7px; border-radius: 6px; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; line-height: 1.35; }
+  .lane.shots .blk { border-left: 3px solid var(--ok); }
+  .lane.shots .blk[data-st="warn"] { border-left-color: var(--warn); } .lane.shots .blk[data-st="bad"] { border-left-color: var(--bad); } .lane.shots .blk[data-st="free"] { border-left-color: var(--dim); }
+  .lane.shots .blk[aria-pressed="true"] { background: #2a2018; }
+  .blk small { display: block; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+  .blk .rv { color: var(--rev); }
+  .lane.subj .blk { background: transparent; border: 1px dashed var(--line); color: var(--dim); min-height: 30px; cursor: default; border-radius: 6px; }
+  #head { position: absolute; top: 6px; bottom: 8px; width: 2px; background: #fff; pointer-events: none; }
+  .ruler { height: 14px; position: relative; cursor: pointer; }
+  .ruler i { position: absolute; top: 5px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #4a5665; } .ruler i.s { background: var(--ink); width: 6px; height: 6px; top: 4px; margin-left: -3px; } .ruler i.c { background: var(--accent); }
+  /* 面板 */
+  .panel { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); min-width: 0; }
+  .tabs { display: flex; gap: 2px; padding: 6px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .tabs button { border-color: transparent; background: transparent; color: var(--dim); }
+  .tabs button[aria-selected="true"] { background: var(--raise); color: var(--ink); border-color: var(--line); }
+  .pane { padding: 12px; display: grid; gap: 10px; }
+  .row { display: grid; grid-template-columns: 74px minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
+  .row label, .row .lb { color: var(--dim); font-size: 12px; }
+  .row output { font: 12px var(--mono); text-align: right; color: var(--ink); }
+  .row input[type="range"] { width: 100%; accent-color: var(--accent); min-width: 0; }
+  .row.two { grid-template-columns: 74px minmax(0, 1fr) minmax(0, 1fr); }
+  .row.wide { grid-template-columns: 74px minmax(0, 1fr); }
+  .row input[type="number"], .row input[type="text"], .row select { width: 100%; min-width: 0; }
+  .camgrid { display: grid; gap: 6px; }
+  .camgrid .hd { display: grid; grid-template-columns: 74px minmax(0, 1fr) minmax(0, 1fr); gap: 8px; color: var(--dim); font-size: 12px; }
+  .pairrow { display: grid; grid-template-columns: 74px minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; }
+  .pairrow > span { color: var(--dim); font-size: 12px; }
+  .pairrow div { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 6px; align-items: center; }
+  .pairrow input { width: 100%; accent-color: var(--accent); min-width: 0; } .pairrow output { font: 12px var(--mono); text-align: right; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .status { border-radius: 8px; padding: 8px 10px; background: var(--raise); font-size: 13px; }
+  .status.ok { color: var(--ok); } .status.warn { color: var(--warn); } .status.bad { color: var(--bad); } .status.free { color: var(--dim); }
+  textarea { width: 100%; min-height: 340px; background: #0a0c10; border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: 12px/1.5 var(--mono); white-space: pre; overflow: auto; resize: vertical; }
+  .errs { color: var(--bad); white-space: pre-wrap; margin: 0; font-size: 13px; } .errs:empty { display: none; }
+  .note { color: var(--dim); margin: 0; font-size: 12.5px; }
+  [hidden] { display: none !important; }
+  #out { touch-action: pan-y; cursor: grab; } #out.dragging { cursor: grabbing; }
+  .ends { position: absolute; left: 10px; top: 10px; display: flex; gap: 4px; align-items: center; background: rgba(11,13,16,0.72); border: 1px solid var(--line); border-radius: 9px; padding: 4px 6px; font-size: 12px; color: var(--dim); }
+  .ends button { min-height: 28px; padding: 2px 9px; font-size: 12px; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; min-width: 330px; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; } tr:last-child td { border-bottom: 0; }
+  td.num { font: 12px var(--mono); } td.bad { color: var(--bad); white-space: normal; } td.ok { color: var(--ok); }
+  .fine { color: var(--dim); font-size: 12px; margin: 14px 0 0; max-width: 90ch; } .fine a { color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a href="../story/">← 作品集</a>
+    <h1>Nova 拍摄 Studio</h1>
+    <label for="pick" class="note">镜头脚本</label>
+    <select id="pick"></select>
+    <span class="note" id="sub"></span>
+  </header>
+  <div class="grid">
+    <section>
+      <div class="stagewrap">
+        <canvas id="out" width="1280" height="720" aria-label="摄影机画面，右上角小窗是机械臂"></canvas>
+        <canvas id="gl" aria-hidden="true"></canvas>
+        <div class="ends" id="ends" hidden><span>拖画面改</span><button type="button" id="end0" aria-pressed="true">起点</button><button type="button" id="end1" aria-pressed="false">终点</button></div>
+        <div id="msg">正在加载模型和动作……</div>
+      </div>
+      <div class="bar">
+        <button id="play" type="button" aria-pressed="false">▶ 播放</button>
+        <span id="tc">0.00 / 0.00</span>
+        <button id="undo" type="button" disabled title="撤销上一步修改（Ctrl/⌘ + Z）">↶ 撤销</button>
+        <span class="spacer"></span>
+        <button id="lock" type="button" aria-pressed="true" title="镜头注视点每帧跟着主体">稳帧</button>
+        <button id="blur" type="button" aria-pressed="true" title="每帧多画几次再叠加">运动模糊</button>
+        <button id="hud" type="button" aria-pressed="true" title="画面里的速率和节拍字幕">字幕</button>
+        <button id="snd" type="button" aria-pressed="false" title="播放时在节拍点出声">节拍声</button>
+      </div>
+      <div class="tracks" aria-label="时间轴">
+        <div class="tracks-in" id="tracksIn">
+          <div class="track"><span>节拍</span><div class="ruler" id="ruler" title="点这里跳到对应时间"></div></div>
+          <div class="track"><span>镜头轨</span><div class="lane shots" id="laneShots" role="group" aria-label="镜头轨"></div></div>
+          <div class="track"><span>主体轨</span><div class="lane subj" id="laneSubj" aria-label="主体轨"></div></div>
+          <div id="head"></div>
+        </div>
+      </div>
+    </section>
+    <aside class="panel">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tab-shot" aria-controls="pane-shot" aria-selected="true">镜头</button>
+        <button type="button" role="tab" id="tab-rig" aria-controls="pane-rig" aria-selected="false">场景</button>
+        <button type="button" role="tab" id="tab-take" aria-controls="pane-take" aria-selected="false">拍摄表</button>
+        <button type="button" role="tab" id="tab-code" aria-controls="pane-code" aria-selected="false">脚本</button>
+      </div>
+      <div class="pane" id="pane-shot" role="tabpanel" aria-labelledby="tab-shot"></div>
+      <div class="pane" id="pane-rig" role="tabpanel" aria-labelledby="tab-rig" hidden></div>
+      <div class="pane" id="pane-take" role="tabpanel" aria-labelledby="tab-take" hidden></div>
+      <div class="pane" id="pane-code" role="tabpanel" aria-labelledby="tab-code" hidden>
+        <p class="note">这份文本就是整套拍摄计划。角度用度、距离用米、时间用秒；改完点“应用”。</p>
+        <textarea id="code" spellcheck="false" aria-label="镜头脚本"></textarea>
+        <pre class="errs" id="codeErrs" role="alert"></pre>
+        <div class="btns"><button id="apply" type="button">应用</button><button id="copy" type="button">复制脚本</button><button id="reset" type="button">还原示例</button></div>
+      </div>
+    </aside>
+  </div>
+  <p class="fine">机械臂用的是近似的 Nova 5 运动学参数，限速（180–225°/秒）和加速度上限（300–450°/秒²）是保守估计，放慢倍数只是估算，没有上过真机；碰撞只检查了台面和主体。小窗里的机械臂是简化外形。小鸭子的动作是 Pollen Robotics 公开的强化学习策略在仿真里跑出来的轨迹；模型 © Pollen Robotics，CC BY-NC-SA，仅限非商业，说明见 <a href="../assets/duck/NOTICE.md">NOTICE</a>。带自动修正和云台分担的旧版工具在 <a href="../previz/">运镜预演台</a>。</p>
+</div>
+<script src="../story/gl.js"></script>
+<script src="../story/motion.js"></script>
+<script src="../story/g1-model.js"></script>
+<script src="../previz/kin.js"></script>
+<script src="../reel/reel.js"></script>
+<script src="../reel/arm.js"></script>
+<script src="script.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

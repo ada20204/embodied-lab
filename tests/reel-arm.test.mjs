@@ -1,13 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import { createRequire } from 'node:module';
-const req = createRequire(import.meta.url);
-const R = req('../reel/reel.js'), A = req('../reel/arm.js'), K = req('../previz/kin.js'), G = req('../story/motion.js');
-const clips = {}, o = G.makeOut();
-const rootAt = (c, s) => { clips[c] = clips[c] || G.fromJson(JSON.parse(fs.readFileSync(new URL(`../assets/duck/motions/${c}.json`, import.meta.url)))); G.sample(clips[c], s, o); return o.pos.slice(); };
-const tl = R.build(R.ARM_SHOTS, 100, { attack: 0.12 }), P = A.plan(tl, rootAt);
-
+import { R, A, K, rootAt, load } from './_studio.mjs';
+const { tl, plan: P } = load('duck-arm');
 test('机械臂版：每个镜头全程可达、不超关节限位、离地面和小鸭子有间隙', () => {
   assert.ok(P.takes.length >= 4);
   for (const t of P.takes) { assert.ok(t.ok, t.name); assert.equal(t.unreach, 0); assert.ok(t.minClr > 0.03, `${t.name} 间隙 ${t.minClr}`); }

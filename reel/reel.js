@@ -25,42 +25,9 @@
     return { eye, up };
   }
 
-  /** 一组镜头：clip 素材、s 素材起止秒、beats 占几拍、cam 起止机位（az/el 弧度，dist 米，fov 度，roll 弧度）。
-   *  rev:true 表示把上一段倒放回去（不用再写 clip/s/cam）。 */
-  const SHOTS = [
-    { name: '起步 · 环绕推近', clip: 'walk_forward', s: [0.6, 3.2], beats: 4, k: 3.4, cam: { az: [-2.5, -0.35], el: [0.55, 0.12], dist: [1.5, 0.52], fov: [34, 30], roll: [-0.22, 0] } },
-    { name: '倒放 · 拉回', rev: true, beats: 2, k: 3.0 },
-    { name: '左脚踢 · 低机位甩入', clip: 'kick_left', s: [0.55, 1.5], beats: 2, k: 3.2, cam: { az: [2.9, 1.15], el: [0.02, 0.1], dist: [0.95, 0.42], fov: [30, 26], roll: [0.3, 0] } },
-    { name: '倒放', rev: true, beats: 1, k: 2.6 },
-    { name: '再踢一次', rev: false, again: true, beats: 1, k: 2.6 },
-    { name: '倒放', rev: true, beats: 1, k: 2.6 },
-    { name: '翻滚 · 跟拍', clip: 'roll', s: [0.9, 3.5], beats: 4, k: 2.6, cam: { az: [-0.2, 1.9], el: [0.18, 0.4], dist: [0.6, 0.95], fov: [30, 34], roll: [0.18, -0.06] } },
-    { name: '倒放 · 滚回来', rev: true, beats: 2, k: 3.0 },
-    { name: '坐下 · 俯拍压下', clip: 'sit_stand', s: [1.2, 3.4], beats: 2, k: 3.0, cam: { az: [0.9, 2.2], el: [1.15, 0.32], dist: [1.2, 0.66], fov: [32, 28], roll: [-0.35, 0] } },
-    { name: '倒放 · 站起', rev: true, beats: 2, k: 3.0 },
-    { name: '低头抓地 · 贴地推近', clip: 'ground_pick', s: [1.0, 3.0], beats: 2, k: 3.2, cam: { az: [1.7, -0.3], el: [0.34, 0.1], dist: [1.05, 0.62], fov: [30, 26], roll: [0.2, 0] } },
-    { name: '倒放', rev: true, beats: 2, k: 3.0 },
-    { name: 'S 形走 · 大环绕收尾', clip: 'walk_s', s: [1.5, 7.0], beats: 6, k: 3.6, cam: { az: [-1.2, 2.6], el: [0.08, 0.34], dist: [0.45, 1.25], fov: [26, 34], roll: [0.16, 0] } },
-  ];
-
-  /** 机械臂版镜头表：Nova 5 拿着 Pocket 3 拍。镜头是定焦（约 54° 竖直视角），机位离主体 0.38–0.54 米，
-   *  都在机械臂这一侧（az 在 ±1.3 弧度内），所选动作基本原地不动。每个镜头真机只需要拍一条正放素材，倒放在后期做。 */
-  const F = 54;
-  const ARM_SHOTS = [
-    { name: '左脚踢 · 弧形推近', clip: 'kick_left', s: [0.55, 1.5], beats: 2, k: 3.0, cam: { az: [-1.05, 0.25], el: [0.5, 0.16], dist: [0.52, 0.38], fov: [F, F], roll: [-0.12, 0] } },
-    { name: '倒放', rev: true, beats: 1, k: 2.6 },
-    { name: '再踢一次', again: true, beats: 1, k: 2.6 },
-    { name: '倒放', rev: true, beats: 2, k: 2.8 },
-    { name: '坐下 · 俯拍压下', clip: 'sit_stand', s: [1.2, 3.4], beats: 2, k: 3.0, cam: { az: [0.9, -0.2], el: [0.95, 0.22], dist: [0.52, 0.4], fov: [F, F], roll: [0.14, 0] } },
-    { name: '倒放 · 站起', rev: true, beats: 2, k: 3.0 },
-    { name: '低头抓地 · 贴地横移', clip: 'ground_pick', s: [1.0, 3.0], beats: 2, k: 3.0, cam: { az: [-0.9, 0.5], el: [0.3, 0.1], dist: [0.5, 0.4], fov: [F, F], roll: [0.1, 0] } },
-    { name: '倒放', rev: true, beats: 2, k: 3.0 },
-    { name: '起步 · 跟拍拉远', clip: 'walk_forward', s: [0.6, 2.2], beats: 4, k: 3.2, cam: { az: [1.1, -0.6], el: [0.12, 0.42], dist: [0.38, 0.54], fov: [F, F], roll: [-0.1, 0] } },
-  ];
-
-  /** 把镜头表按 BPM 排成时间轴。返回 { bpm, beat（一拍几秒）, dur, segs }；每段 { t0, t1, clip, s0, s1, cam, k, rev, name, cut } */
+  /** 把镜头表（studio/script.js 编译出来的内部格式）按 BPM 排成时间轴。返回 { bpm, beat（一拍几秒）, dur, segs }；每段 { t0, t1, clip, s0, s1, cam, k, rev, name, cut } */
   function build(shots, bpm, opt) {
-    shots = shots || SHOTS; bpm = bpm || 100; opt = opt || {};
+    bpm = bpm || 100; opt = opt || {};
     const beat = 60 / bpm, segs = [];
     let t = 0, base = null;
     for (const sh of shots) {
@@ -69,8 +36,9 @@
         if (!base) throw new Error('第一段不能是倒放');
         seg = { clip: base.clip, s0: base.s0, s1: base.s1, cam: base.cam, rev: !!sh.rev, cut: false, base: base.base };
       } else {
-        if (!sh.clip || !sh.s || !sh.cam) throw new Error('镜头缺 clip / s / cam：' + (sh.name || ''));
-        seg = { clip: sh.clip, s0: sh.s[0], s1: sh.s[1], cam: sh.cam, rev: false, cut: segs.length > 0, base: segs.length };
+        if (!sh.cam) throw new Error('镜头缺机位：' + (sh.name || ''));
+        const ss = sh.s || [0, 1];   // 静物没有动作片段
+        seg = { clip: sh.clip || null, s0: ss[0], s1: ss[1], cam: sh.cam, rev: false, cut: segs.length > 0, base: segs.length };
         base = seg;
       }
       seg.name = sh.name || ''; seg.k = sh.k || 3; seg.beats = sh.beats || 2;
@@ -110,7 +78,7 @@
     return Array.from({ length: n }, (_, b) => ({ t: b * tl.beat, strong: starts.has(b), cut: tl.segs.some(g => g.cut && Math.round(g.t0 / tl.beat) === b) }));
   }
 
-  const api = { SHOTS, ARM_SHOTS, build, evalAt, segAt, beats, easeOut, easeOutRate, eyeUp };
+  const api = { build, evalAt, segAt, beats, easeOut, easeOutRate, eyeUp };
   root.Reel = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

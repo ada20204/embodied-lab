@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import { createRequire } from 'node:module';
-const R = createRequire(import.meta.url)('../reel/reel.js');
-const tl = R.build(R.SHOTS, 100);
+import { R, load, scriptNames } from './_studio.mjs';
+const all = scriptNames.map(n => load(n)), free = load('duck-free'), tl = free.tl;
 const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
 
 test('每段都落在整拍上，首尾相接', () => {
@@ -31,15 +29,12 @@ test('倒放：从上一段停住的地方原路返回，机位和素材时间�
     assert.ok(near(R.evalAt(tl, g.t1 - 1e-7).s, g.s0, 1e-3), '倒放到头回到素材起点');
   });
 });
-test('镜头表引用的素材都存在，起止秒在片段时长内', () => {
-  for (const g of tl.segs) {
-    const d = JSON.parse(fs.readFileSync(new URL(`../assets/duck/motions/${g.clip}.json`, import.meta.url)));
-    const dur = (d.frames.length - 1) / d.fps;
-    assert.ok(g.s0 >= 0 && g.s1 <= dur && g.s1 > g.s0, `${g.clip} ${g.s0}–${g.s1} / ${dur}`);
-  }
+test('三份示例脚本都能编译并排上时间轴', () => {
+  assert.ok(all.length >= 3);
+  for (const x of all) { assert.ok(x.tl.segs.length >= 4); assert.ok(x.tl.dur > 5); }
 });
 test('节拍表：换镜头的拍都是强拍；改 BPM 只改时长不改结构', () => {
   const b = R.beats(tl); assert.ok(b.filter(x => x.cut).every(x => x.strong));
-  const t2 = R.build(R.SHOTS, 50); assert.ok(near(t2.dur, tl.dur * 2)); assert.equal(t2.segs.length, tl.segs.length);
+  const c = free.c, t2 = R.build(c.shots, c.bpm / 2); assert.ok(near(t2.dur, tl.dur * 2)); assert.equal(t2.segs.length, tl.segs.length);
   assert.throws(() => R.build([{ rev: true }], 100));
 });

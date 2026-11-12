@@ -1,0 +1,19 @@
+{
+  "name": "小鸭子 · 机械臂卡点",
+  "note": "Nova 5 倒挂 Pocket 3，每个镜头真机拍一条正放素材",
+  "bpm": 100,
+  "attack": 0.12,
+  "subject": {"type": "duck"},
+  "rig": {"arm": true, "base": [0.05, -0.9, 0.3], "mount": "invert", "fov": 54},
+  "shots": [
+    {"name": "左脚踢 · 弧形推近", "clip": "kick_left", "from": 0.55, "to": 1.5, "cam": {"az": [-60, 14], "el": [29, 9], "dist": [0.52, 0.38], "roll": [-7, 0]}, "beats": 2, "ease": 3.0},
+    {"name": "倒放", "reverse": true, "beats": 1, "ease": 2.6},
+    {"name": "再踢一次", "repeat": true, "beats": 1, "ease": 2.6},
+    {"name": "倒放", "reverse": true, "beats": 2, "ease": 2.8},
+    {"name": "坐下 · 俯拍压下", "clip": "sit_stand", "from": 1.2, "to": 3.4, "cam": {"az": [52, -11], "el": [54, 13], "dist": [0.52, 0.4], "roll": [8, 0]}, "beats": 2, "ease": 3.0},
+    {"name": "倒放 · 站起", "reverse": true, "beats": 2, "ease": 3.0},
+    {"name": "低头抓地 · 贴地横移", "clip": "ground_pick", "from": 1.0, "to": 3.0, "cam": {"az": [-52, 29], "el": [17, 6], "dist": [0.5, 0.4], "roll": [6, 0]}, "beats": 2, "ease": 3.0},
+    {"name": "倒放", "reverse": true, "beats": 2, "ease": 3.0},
+    {"name": "起步 · 跟拍拉远", "clip": "walk_forward", "from": 0.6, "to": 2.2, "cam": {"az": [63, -34], "el": [7, 24], "dist": [0.38, 0.54], "roll": [-6, 0]}, "beats": 4, "ease": 3.2}
+  ]
+}
