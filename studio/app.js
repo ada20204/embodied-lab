@@ -215,7 +215,7 @@
       return;
     }
     st.render({ roots: [subj], camera: cam, gridCenter: [sx, sy], gridScale: 0.4, gridColor: [0.55, 0.66, 0.80] });
-    if (plan) {
+    if (plan && !S.clean) {
       const b = plan.opt.base; pipCam.target[0] = (b[0] + sx) / 2; pipCam.target[1] = (b[1] + sy) / 2;
       st.light.az = -60; st.shadows.push({ c: [b[0], b[1]], r: 0.3 });
       st.render({ roots: [subj, armRoot], camera: pipCam, viewport: PIP, gridCenter: [pipCam.target[0], pipCam.target[1]], gridScale: 0.6, gridColor: [0.45, 0.55, 0.68] });
@@ -229,6 +229,7 @@
     g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.55)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     if (ev.seg.cut && ev.sinceCut < 0.09) { ctx.fillStyle = `rgba(255,255,255,${0.22 * (1 - ev.sinceCut / 0.09)})`; ctx.fillRect(0, 0, W, H); }
     ctx.textBaseline = 'alphabetic';
+    if (S.clean) return;                                   // 干净成片：不画小窗、字幕、节拍条
     if (plan) {   // 小窗边框、视线、放慢倍数
       const x = PIP[0] * W, y = PIP[1] * H, w = PIP[2] * W, h = PIP[3] * H, k = plan.takes.find(q => q.seg === ev.seg.base);
       ctx.strokeStyle = k.ok ? 'rgba(255,255,255,0.35)' : 'rgba(255,133,133,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
@@ -530,7 +531,7 @@
   }
 
   // ---- 标签页、脚本编辑、播放 ----
-  const TABS = ['shot', 'rig', 'take', 'code'];
+  const TABS = ['shot', 'rig', 'take', 'code', 'out'];
   TABS.forEach(k => $('#tab-' + k).addEventListener('click', () => TABS.forEach(j => { $('#tab-' + j).setAttribute('aria-selected', String(j === k)); $('#pane-' + j).hidden = j !== k; })));
   $('#apply').addEventListener('click', () => {
     let obj; try { obj = JSON.parse($('#code').value); } catch (e) { $('#codeErrs').textContent = '不是合法的 JSON：' + e.message; return; }
@@ -566,6 +567,7 @@
   function loop(now) {
     requestAnimationFrame(loop);
     const dt = Math.min((now - last) / 1000, 0.1); last = now;
+    if (exporting) return;                                 // 导出时画面由导出流程逐帧画
     if (S.playing) {
       S.t += dt; if (S.t >= tl.dur) { S.t = 0; lastBeat = -1; }
       const b = Math.floor(S.t / tl.beat + 1e-6); if (b !== lastBeat) { lastBeat = b; tick(bts[b] && bts[b].strong); }
@@ -574,6 +576,92 @@
   }
   ui.play.addEventListener('click', () => { S.playing = !S.playing; });
   for (const k of ['lock', 'blur', 'hud', 'snd']) ui[k].addEventListener('click', () => { S[k] = !S[k]; if (k === 'snd' && S.snd) tick(true); });
+
+  // ---- 导出视频：不实时，逐帧画完再编码，所以慢机器出来的也是顺滑的 30 帧成片 ----
+  let exporting = false, exportUrl = null;
+  let dl = null; try { if (window.claude && window.claude.use) window.claude.use('downloads').then(x => { dl = x; }, () => {}); } catch (e) { /* 普通网页没有这个接口 */ }
+  function beatPcm(rate) {   // 和“节拍声”同一个音色：每拍一下低频鼓点，重拍更响
+    const n = Math.ceil(tl.dur * rate), pcm = new Float32Array(n);
+    for (const b of bts) {
+      const i0 = Math.round(b.t * rate), f0 = b.strong ? 150 : 90, g0 = b.strong ? 0.6 : 0.3, len = Math.round(0.18 * rate); let ph = 0;
+      for (let i = 0; i < len && i0 + i < n; i++) { const t = i / rate, f = f0 * Math.pow(42 / f0, Math.min(t / 0.12, 1)); ph += 6.2832 * f / rate; pcm[i0 + i] += Math.sin(ph) * g0 * Math.pow(0.001 / g0, t / 0.16); }
+    }
+    return pcm;
+  }
+  async function exportVideo(opt, onProgress) {
+    if (!window.VideoEncoder || !window.VideoFrame) throw new Error('这个浏览器不支持网页内视频编码（WebCodecs）。请用新版 Chrome、Edge 或 Safari。');
+    const cfg = { codec: 'avc1.640028', width: W, height: H, bitrate: opt.bitrate || 12e6, framerate: FPS, avc: { format: 'avc' } };
+    if (!(await VideoEncoder.isConfigSupported(cfg)).supported) { cfg.codec = 'avc1.42E01F'; if (!(await VideoEncoder.isConfigSupported(cfg)).supported) throw new Error('这个浏览器不能编码 H.264 视频。'); }
+    const keep = { t: S.t, playing: S.playing, view: S.view, clean: S.clean, hud: S.hud };
+    exporting = true; S.playing = false; if (S.view !== 'cam') setView('cam'); S.clean = !!opt.clean; S.hud = true;
+    const vs = [], as = []; let avcC = null, asc = null, err = null;
+    const venc = new VideoEncoder({ output: (c, m) => { const d = new Uint8Array(c.byteLength); c.copyTo(d); vs.push({ data: d, key: c.type === 'key' }); if (m && m.decoderConfig && m.decoderConfig.description) avcC = new Uint8Array(m.decoderConfig.description.buffer || m.decoderConfig.description); }, error: e => { err = e; } });
+    venc.configure(cfg);
+    try {
+      const n = Math.round(tl.dur * FPS);
+      for (let i = 0; i < n; i++) {
+        if (opt.signal && opt.signal.cancelled) throw new Error('已取消');
+        if (err) throw err;
+        frame(i / FPS, opt.samples || 8);
+        const vf = new VideoFrame(out, { timestamp: Math.round(i * 1e6 / FPS), duration: Math.round(1e6 / FPS) });
+        venc.encode(vf, { keyFrame: i % 60 === 0 }); vf.close();
+        while (venc.encodeQueueSize > 6) await new Promise(r => setTimeout(r, 4));
+        if (i % 3 === 0) { onProgress && onProgress(i / n, `正在画第 ${i + 1} / ${n} 帧……`); await new Promise(r => setTimeout(r, 0)); }
+      }
+      await venc.flush(); if (err) throw err;
+      if (!avcC) throw new Error('编码器没有给出解码参数');
+      const tracks = [{ kind: 'video', timescale: FPS, sampleDur: 1, samples: vs, width: W, height: H, avcC }];
+      let note = '';
+      if (opt.sound) {   // 节拍音轨：能编 AAC 就带上，编不了就只出画面
+        try {
+          const RATE = 48000, acfg = { codec: 'mp4a.40.2', sampleRate: RATE, numberOfChannels: 1, bitrate: 128000 };
+          if (!window.AudioEncoder || !(await AudioEncoder.isConfigSupported(acfg)).supported) throw new Error('不支持 AAC');
+          const aenc = new AudioEncoder({ output: (c, m) => { const d = new Uint8Array(c.byteLength); c.copyTo(d); as.push({ data: d }); if (m && m.decoderConfig && m.decoderConfig.description) asc = new Uint8Array(m.decoderConfig.description.buffer || m.decoderConfig.description); }, error: e => { err = e; } });
+          aenc.configure(acfg);
+          const pcm = beatPcm(RATE), CH = RATE;   // 一秒一块喂给编码器
+          for (let o = 0; o < pcm.length; o += CH) { const part = pcm.subarray(o, Math.min(o + CH, pcm.length)); const ad = new AudioData({ format: 'f32-planar', sampleRate: RATE, numberOfFrames: part.length, numberOfChannels: 1, timestamp: Math.round(o * 1e6 / RATE), data: part }); aenc.encode(ad); ad.close(); }
+          await aenc.flush(); aenc.close(); if (err) throw err;
+          tracks.push({ kind: 'audio', timescale: RATE, sampleDur: 1024, samples: as, sampleRate: RATE, channels: 1, asc: asc || new Uint8Array([0x11, 0x88]) });
+        } catch (e) { note = '这个浏览器编不了音轨，导出的视频没有声音。'; err = null; }
+      }
+      onProgress && onProgress(1, '正在封装……');
+      const bytes = Mp4.build(tracks);
+      return { blob: new Blob([bytes], { type: 'video/mp4' }), bytes, frames: n, note };
+    } finally {
+      try { venc.close(); } catch (e) { /* 已经关了 */ }
+      S.clean = keep.clean; S.hud = keep.hud; if (keep.view !== 'cam') setView(keep.view); S.t = keep.t; S.playing = keep.playing; exporting = false; last = performance.now();
+    }
+  }
+  (function exportPane() {
+    const p = $('#pane-out'), row = (label, ctl) => el('div', { className: 'row wide' }, [el('label', { htmlFor: ctl.id, textContent: label }), ctl]);
+    const sel = (id, opts) => { const s = el('select', { id }); opts.forEach(([v, t]) => s.append(el('option', { value: v, textContent: t }))); return s; };
+    const look = sel('ex-look', [['full', '带字幕和机械臂小窗'], ['clean', '干净成片（只有画面）']]), q = sel('ex-q', [['8', '标准（每帧画 8 次）'], ['4', '快速（每帧画 4 次）'], ['16', '精细（每帧画 16 次）'], ['1', '不做运动模糊']]), snd = sel('ex-snd', [['1', '带节拍声'], ['0', '无声']]);
+    const go = el('button', { type: 'button', id: 'ex-go', textContent: '导出 MP4' }), stop = el('button', { type: 'button', id: 'ex-stop', textContent: '取消', hidden: true });
+    const bar = el('progress', { id: 'ex-bar', max: 1, value: 0, hidden: true }), info = el('p', { className: 'note', id: 'ex-info', textContent: '1280×720、30 帧/秒的 H.264 视频。导出不是实时录屏：每一帧画完再编码，电脑慢只会导得久一点，不会掉帧。' });
+    const res = el('div', { id: 'ex-res', className: 'exres', hidden: true });
+    bar.setAttribute('aria-label', '导出进度');
+    let signal = null;
+    go.addEventListener('click', async () => {
+      if (exporting) return; signal = { cancelled: false }; go.disabled = true; stop.hidden = false; bar.hidden = false; bar.value = 0; res.hidden = true;
+      const t0 = performance.now();
+      try {
+        const r = await exportVideo({ clean: look.value === 'clean', samples: +q.value, sound: snd.value === '1', signal }, (f, t) => { bar.value = f; info.textContent = t; });
+        if (exportUrl) URL.revokeObjectURL(exportUrl); exportUrl = URL.createObjectURL(r.blob);
+        const name = `${S.name}${look.value === 'clean' ? '-clean' : ''}.mp4`, v = el('video', { src: exportUrl, controls: true, loop: true, playsInline: true }), a = el('a', { href: exportUrl, download: name, className: 'savebtn', textContent: '保存 ' + name });
+        v.setAttribute('aria-label', '导出的视频预览');
+        a.addEventListener('click', async e2 => {   // 内嵌在 Claude 里时浏览器自己的下载被禁用，走平台的保存确认
+          if (!dl) return; e2.preventDefault();
+          try { await dl.save({ filename: name, data: r.blob }); info.textContent = '已交给系统保存：' + name; }
+          catch (er) { info.textContent = er && er.code === 'declined' ? '没有保存（你取消了）。视频还在，可以再点一次。' : '这里保存不了（' + ((er && er.code) || '未知原因') + '）。可以在视频上长按或点右键选“存储视频”。'; }
+        });
+        res.textContent = ''; res.append(v, a); res.hidden = false;
+        info.textContent = `导出完成：${r.frames} 帧，${(r.blob.size / 1048576).toFixed(1)} MB，用时 ${((performance.now() - t0) / 1000).toFixed(0)} 秒。${r.note}点“保存”存到本机；如果点了没反应（比如在内嵌页面里），在视频上长按或点右键选“存储视频”。`;
+      } catch (e) { info.textContent = '没有导出：' + e.message; }
+      go.disabled = false; stop.hidden = true; bar.hidden = true;
+    });
+    stop.addEventListener('click', () => { if (signal) signal.cancelled = true; });
+    p.append(row('画面', look), row('运动模糊', q), row('声音', snd), el('div', { className: 'btns' }, [go, stop]), bar, info, res);
+  })();
 
   const ready = load().then(() => {
     SCRIPTS.forEach(n => pick.append(el('option', { value: n, textContent: examples[n].name })));
@@ -585,7 +673,7 @@
 
   let novaReady = null;
   window.__reel = {
-    ready, get novaReady() { return novaReady; }, get nova() { return !!nova; }, S, fps: FPS, get tl() { return tl; }, get plan() { return plan; }, get script() { return script; }, get armNow() { return armNow; }, freeCam, frame, applyScript, openScript, setView, runRepair,
+    ready, get novaReady() { return novaReady; }, get nova() { return !!nova; }, S, fps: FPS, get tl() { return tl; }, get plan() { return plan; }, get script() { return script; }, get armNow() { return armNow; }, freeCam, frame, applyScript, openScript, setView, runRepair, exportVideo,
     shot(i, n) { frame(i / FPS, n || 12); return out.toDataURL('image/jpeg', 0.92).slice(23); },
   };
 })();

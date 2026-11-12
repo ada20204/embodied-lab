@@ -79,6 +79,8 @@
   [hidden] { display: none !important; }
   #out { touch-action: pan-y; cursor: grab; } #out.dragging { cursor: grabbing; } #out.free { touch-action: none; }
   .seg { display: inline-flex; } .seg button:first-child { border-radius: 8px 0 0 8px; } .seg button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
+  progress { width: 100%; accent-color: var(--accent); } .exres { display: grid; gap: 8px; } .exres video { width: 100%; border-radius: 8px; background: #000; }
+  .savebtn { display: inline-block; text-align: center; background: var(--accent); color: #1a0e04; font-weight: 600; text-decoration: none; border-radius: 8px; padding: 9px 14px; }
   .fix { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .fix .note { flex: 1 1 160px; }
   .ends { position: absolute; left: 10px; top: 10px; display: flex; gap: 4px; align-items: center; background: rgba(11,13,16,0.72); border: 1px solid var(--line); border-radius: 9px; padding: 4px 6px; font-size: 12px; color: var(--dim); }
   .ends button { min-height: 28px; padding: 2px 9px; font-size: 12px; }
@@ -134,10 +136,12 @@
         <button type="button" role="tab" id="tab-rig" aria-controls="pane-rig" aria-selected="false">场景</button>
         <button type="button" role="tab" id="tab-take" aria-controls="pane-take" aria-selected="false">拍摄表</button>
         <button type="button" role="tab" id="tab-code" aria-controls="pane-code" aria-selected="false">脚本</button>
+        <button type="button" role="tab" id="tab-out" aria-controls="pane-out" aria-selected="false">导出</button>
       </div>
       <div class="pane" id="pane-shot" role="tabpanel" aria-labelledby="tab-shot"></div>
       <div class="pane" id="pane-rig" role="tabpanel" aria-labelledby="tab-rig" hidden></div>
       <div class="pane" id="pane-take" role="tabpanel" aria-labelledby="tab-take" hidden></div>
+      <div class="pane" id="pane-out" role="tabpanel" aria-labelledby="tab-out" hidden></div>
       <div class="pane" id="pane-code" role="tabpanel" aria-labelledby="tab-code" hidden>
         <p class="note">这份文本就是整套拍摄计划。角度用度、距离用米、时间用秒；改完点“应用”。</p>
         <textarea id="code" spellcheck="false" aria-label="镜头脚本"></textarea>
@@ -155,6 +159,7 @@
 <script src="../reel/reel.js"></script>
 <script src="../reel/arm.js"></script>
 <script src="script.js"></script>
+<script src="mp4.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
