@@ -273,6 +273,6 @@ function planGimbal(S,pct){
 }
 
 setMount('side');
-return {GLIM,GVMAX,setGimbal,getGimbal:()=>GIMBAL,planGimbal,gimbalAt,POCKET,MOUNTS,setMount,getMount:()=>MOUNT,mountMatrix:()=>MOUNT_M,mul,AMAX,SING_MIN,setProduct,wallN,facing,D2R,R2D,DH,LIM,VMAX,LAYOUT,TARGET,fk,P,COL,tool,capsules,shotPose,compile,repair,BIT,ERRM,WARNM,PART,SPACE};
+return {GLIM,GVMAX,setGimbal,getGimbal:()=>GIMBAL,planGimbal,gimbalAt,POCKET,MOUNTS,setMount,getMount:()=>MOUNT,mountMatrix:()=>MOUNT_M,mul,AMAX,SING_MIN,setProduct,wallN,facing,D2R,R2D,DH,LIM,VMAX,LAYOUT,TARGET,fk,ik,lookPose,seedsFor,P,COL,tool,capsules,shotPose,compile,repair,BIT,ERRM,WARNM,PART,SPACE};
 })();
 if(typeof module!=='undefined')module.exports=KIN;

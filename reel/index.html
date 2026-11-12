@@ -28,6 +28,13 @@
   .how { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 6px; }
   .how div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--dim); }
   .how b { color: var(--ink); display: block; margin-bottom: 2px; }
+  #takes { margin-top: 14px; } #takes h2 { font-size: 15px; margin: 0 0 4px; }
+  .note { color: var(--dim); margin: 0 0 8px; max-width: 70ch; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; } tr:last-child td { border-bottom: 0; }
+  td.num { font-variant-numeric: tabular-nums; } td .bad { color: #ff8a8a; }
   .fine { color: var(--dim); font-size: 12px; margin-top: 12px; }
   .fine a { color: var(--dim); }
 </style>
@@ -52,18 +59,26 @@
     <button id="lock" type="button" aria-pressed="true" title="镜头注视点每帧跟着小鸭子">稳帧</button>
     <button id="blur" type="button" aria-pressed="true" title="每帧多画几次再叠加">运动模糊</button>
     <button id="snd" type="button" aria-pressed="false" title="播放时在节拍点出声">节拍声</button>
+    <button id="arm" type="button" aria-pressed="false" title="让 Nova 5 机械臂拿着这台摄影机">机械臂版</button>
   </div>
   <div class="how">
     <div><b>稳帧</b>镜头的注视点每一帧都取小鸭子身体的位置，所以它一直在画面中心。关掉“稳帧”可以看到差别。</div>
     <div><b>先快后慢</b>每段开头速度最大（约 3 倍），然后减到停住。动作和镜头用同一条进度曲线。</div>
     <div><b>倒放卡点</b>倒放段把同一段素材和机位原路放回去，同样先快后慢。换镜头都落在节拍上、速度最大的那一帧。</div>
   </div>
+  <section id="takes" hidden>
+    <h2>真机怎么拍</h2>
+    <p class="note">每个镜头真机只拍一条正放素材：按下面的倍数放慢执行，成片再线性加速同样的倍数；倒放和卡点在后期做。机械臂版每段开头留了一小段加速（真机不能瞬间到最大速度），所以卡点比虚拟镜头版略软。倍数按 Nova 5 的保守关节限速（180–225°/秒）和加速度上限（300–450°/秒²）算出，机械臂参数是近似值，上真机前要核对。</p>
+    <div class="tablewrap"><table><thead><tr><th>镜头</th><th>可达</th><th>最小间隙</th><th>放慢</th><th>真机时长</th><th>轨迹</th></tr></thead><tbody id="takeRows"></tbody></table></div>
+  </section>
   <p class="fine">小鸭子的动作是 Pollen Robotics 公开的强化学习策略在仿真里跑出来的轨迹，不是真机。模型 © Pollen Robotics，CC BY-NC-SA，仅限非商业；说明见 <a href="../assets/duck/NOTICE.md">NOTICE</a>。</p>
 </main>
 <script src="../story/gl.js"></script>
 <script src="../story/motion.js"></script>
 <script src="../story/g1-model.js"></script>
+<script src="../previz/kin.js"></script>
 <script src="reel.js"></script>
+<script src="arm.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
