@@ -9,8 +9,8 @@
   const KIN = root.KIN || (typeof require !== 'undefined' ? require('../previz/kin.js') : null);
   const Reel = root.Reel || (typeof require !== 'undefined' ? require('./reel.js') : null);
   const D2R = Math.PI / 180, M = 96;                     // 每个镜头沿进度取 M+1 个点
-  const DEF = { base: [0.05, -0.9, 0.3], mount: 'invert',   // 底座垫高 30 cm、离主体约 0.9 m、Pocket 倒挂：试算里这样全部镜头可达且放慢倍数最小
-    lookUp: 0.03, subjectR: 0.11, speedPct: 100 };
+  const DEF = { base: [0.05, -0.85, 0.3], mount: 'invert',   // 底座垫高 30 cm、离主体约 0.85 m、Pocket 倒挂：试算里这样全部镜头可达且放慢倍数最小
+    lookUp: 0.03, subjectR: 0.11, subjectHalf: 0, subjectYaw: 0, speedPct: 100 };   // subjectHalf > 0：主体是沿 x 横放的长条（比如车），碰撞按胶囊体算
 
   /** 进度 p 时镜头在机械臂坐标系里的位姿（4×4，行主序，KIN 的约定） */
   function lensPose(seg, p, rootAt, o) {
@@ -47,7 +47,9 @@
     const colA = [0, 0, -o.base[2]], colB = [0, 0, KIN.LAYOUT.baseH];
     const add = (i, what) => { mask |= 1 << i; hits.push({ part: i, what }); };
     C.forEach((c, i) => {
-      const fl = Math.min(c.a[2], c.b[2]) + o.base[2] - c.r, sj = segDist(c.a, c.b, subj) - c.r - o.subjectR;
+      const fl = Math.min(c.a[2], c.b[2]) + o.base[2] - c.r, h = o.subjectHalf || 0;
+      const hx = h * Math.cos(o.subjectYaw || 0), hy = h * Math.sin(o.subjectYaw || 0);
+      const sj = (h ? segSeg(c.a, c.b, [subj[0] - hx, subj[1] - hy, subj[2]], [subj[0] + hx, subj[1] + hy, subj[2]]) : segDist(c.a, c.b, subj)) - c.r - o.subjectR;
       clr = Math.min(clr, fl, sj);
       if (fl < 0.01) add(i, 'floor');
       if (sj < 0.01) add(i, 'subject');

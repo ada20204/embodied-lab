@@ -20,7 +20,7 @@
 - 渲染器 [`story/gl.js`](story/gl.js) 是自己写的 WebGL2（不依赖 Three.js），读 glb 并画带关节的层级模型。
 - **Microduck**：把 Pollen Robotics 的开源小鸭子（`microduck_rl`；代码 Apache-2.0，**3D 网格 CC BY-NC-SA，仅限非商业**）的走路版关节模型放进页面，14 个关节可以点选和拖动；头部的动作是手工做的示意，**不是它的强化学习策略**。**动作库里有 10 段小鸭子的轨迹**（前进走、边走边转、S 形走、走走停停、组合动作、坐下站起、左右脚踢、翻滚、低头抓地）；滚轮模式要换另一套带轮子的模型，还没做：用 MuJoCo + BAM 执行器跑 Pollen 公开的 ONNX 策略录下来的仿真轨迹（`assets/duck/motions/`，50 FPS），不是真机；在我的仿真里速度跟踪偏弱（指令 0.25 m/s，实际约 0.1 m/s），原因没查清。真正的实时策略推理是 Hugging Face 上的官方网页仿真 Microduck Sandbox，页面里有链接。许可见 [`assets/duck/NOTICE.md`](assets/duck/NOTICE.md)。
 - G1 模型来自 MuJoCo Menagerie（BSD-3-Clause，© Unitree Robotics），简化后放在 `assets/g1/`，许可见 [`assets/g1/NOTICE.md`](assets/g1/NOTICE.md)。
-- 越疆双臂模型 `assets/nova/` 来源与许可待确认，**已加入 `.gitignore`，不随仓库发布**；缺少它时页面自动降级为文字。
+- 越疆 Nova 5 双臂模型在 `assets/nova/`，说明见 [`assets/nova/NOTICE.md`](assets/nova/NOTICE.md)；缺少它时作品集自动降级为文字，Studio 退回简化外形。
 
 ## 运镜预演台
 
@@ -76,7 +76,7 @@ node --test tests/kin.test.mjs   # 运行测试，需要 Node 18+
 
 这是**仿真预演**，还没有真机数据：
 
-- Nova 用近似的 UR 型 DH 参数（臂展约 0.85 m），不是官方 URDF；
+- Nova 用 UR 型 DH 参数，连杆长度按实体模型的关节轴位置取（大臂 0.40 m、小臂 0.33 m），限位和限速是近似值，没有和真机标定过；
 - Pocket 3 是按外形尺寸建的近似模型；云台限位和角速度是保守估计，未与 DJI 数据核对；
 - 碰撞用胶囊体近似，留 2 cm 余量；
 - 云台分担要求机械臂和云台同时起步，蓝牙延迟和重复精度还没实测。

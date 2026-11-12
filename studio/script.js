@@ -20,9 +20,10 @@
   const SUBJECTS = {
     duck: { label: '小鸭子（仿真动作）', lookUp: 0.03, radius: 0.11, clips: true },
     product: { label: '静物 / 产品', lookUp: 0.085, radius: 0.075, clips: false },
+    car: { label: '方程式赛车模型（1:12，车头朝 +x）', lookUp: 0.04, radius: 0.1, half: 0.14, clips: false },   // half：沿车长方向的半长（碰撞按一根横放的胶囊体算）
   };
   const MOUNTS = ['invert', 'side', 'bottom'];
-  const DEF_RIG = { arm: true, base: [0.05, -0.9, 0.3], mount: 'invert', fov: 54 };
+  const DEF_RIG = { arm: true, base: [0.05, -0.85, 0.3], mount: 'invert', fov: 54 };
   const RANGE = {   // 面板滑块和校验共用
     az: [-180, 360, 1, '°'], el: [-5, 89, 1, '°'], dist: [0.15, 2.5, 0.01, ' m'], roll: [-45, 45, 1, '°'], fov: [15, 90, 1, '°'],
     beats: [1, 16, 1, ' 拍'], ease: [1, 6, 0.1, '×'],
@@ -37,6 +38,7 @@
     if (!sc || typeof sc !== 'object') return ['脚本必须是一个对象'];
     const sub = sc.subject && SUBJECTS[sc.subject.type];
     if (!sub) E.push(`subject.type 要写 ${Object.keys(SUBJECTS).join(' 或 ')}`);
+    if (sc.subject && sc.subject.yaw !== undefined && !(num(sc.subject.yaw) && Math.abs(sc.subject.yaw) <= 180)) E.push('subject.yaw 要在 −180 到 180 度之间');
     if (sc.bpm !== undefined && !(num(sc.bpm) && sc.bpm >= 30 && sc.bpm <= 240)) E.push('bpm 要在 30–240 之间');
     if (sc.attack !== undefined && !(num(sc.attack) && sc.attack >= 0 && sc.attack <= 0.6)) E.push('attack 要在 0–0.6 之间');
     const rig = sc.rig || {};
@@ -68,7 +70,7 @@
   function compile(sc, clipDur) {
     const errs = validate(sc, clipDur);
     if (errs.length) { const e = new Error(errs.join('\n')); e.issues = errs; throw e; }
-    const sub = Object.assign({ type: sc.subject.type }, SUBJECTS[sc.subject.type]), rig = Object.assign({}, DEF_RIG, sc.rig || {});
+    const sub = Object.assign({ type: sc.subject.type, yaw: (sc.subject.yaw || 0) * D2R }, SUBJECTS[sc.subject.type]), rig = Object.assign({}, DEF_RIG, sc.rig || {});
     const rad = p => [p[0] * D2R, p[1] * D2R];
     const shots = sc.shots.map(sh => {
       const o = { name: sh.name || '', beats: sh.beats, k: sh.ease || 3 };

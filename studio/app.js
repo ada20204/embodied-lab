@@ -6,12 +6,12 @@
   const $ = s => document.querySelector(s), el = (tag, props, kids) => { const e = document.createElement(tag); Object.assign(e, props || {}); (kids || []).forEach(k => e.append(k)); return e; };
   const Q = new URLSearchParams(location.search), SS = window.StudioScript;
   const W = 1280, H = 720, FPS = 30, SHUTTER = 0.8 / FPS;
-  const SCRIPTS = ['duck-arm', 'product-arm', 'duck-free'];
+  const SCRIPTS = ['duck-arm', 'car-arm', 'product-arm', 'duck-free'];
   const out = $('#out'), ctx = out.getContext('2d'), glc = $('#gl'), msg = $('#msg');
   const st = window.Stage3D.create(glc, { pixelRatio: 1, bg: [0.035, 0.04, 0.05] });
   const S = { t: 0, playing: false, lock: Q.get('lock') !== '0', blur: Q.get('blur') !== '0', hud: Q.get('hud') !== '0', snd: false, samples: +Q.get('samples') || 5, sel: 0, end: 0, view: Q.get('view') === 'free' ? 'free' : 'cam', name: SCRIPTS.includes(Q.get('script')) ? Q.get('script') : SCRIPTS[0] };
   const examples = {}, clips = {}, clipDur = {};
-  let script = null, C = null, tl = null, bts = [], plan = null, duck = null, product = null;
+  let script = null, C = null, tl = null, bts = [], plan = null, duck = null, product = null, car = null, nova = null;
   const ev = { cam: {} }, mo = G1Motion.makeOut(), pose = {}, anchor = G1Motion.makeOut(), _ro = G1Motion.makeOut();
   const cam = { target: [0, 0, 0.13], dist: 1, az: 0, el: 0.2, fov: 30, roll: 0 };
   const DUCK_CLIPS = G1Motion.DUCK_CLIPS.map(c => c.id), CLIP_NAME = Object.fromEntries(G1Motion.DUCK_CLIPS.map(c => [c.id, c.name]));
@@ -26,7 +26,21 @@
     duck = G1Model.build(st, Stage3D.parseGLB(buf), spec);
     await Promise.all(DUCK_CLIPS.map(async id => { clips[id] = G1Motion.fromJson(await getJson(`../assets/duck/motions/${id}.json`)); clipDur[id] = G1Motion.duration(clips[id]); }));
     await Promise.all(SCRIPTS.map(async n => { examples[n] = await getJson(`scripts/${n}.json`); }));
-    buildArm(); buildProduct();
+    buildArm(); buildProduct(); buildCar();
+  }
+  // 真实的 Nova 5 外形：后台加载，到了就替换掉胶囊体（模型里是双臂，只用左臂；夹爪是占位几何，不显示）
+  const NOVA_MAP = { s: [1, -1, -1, -1, 1, -1], o: [0, -Math.PI / 2, 0, -Math.PI / 2, 0, 0] };   // 运动学关节角 → 模型关节角（数值标定，法兰位置误差 < 1 mm）
+  async function loadNova() {
+    try {
+      const [spec, buf] = await Promise.all([getJson('../assets/nova/nova5_joints.json'), getBuf('../assets/nova/nova5.glb')]);
+      const r = st.instantiate(Stage3D.parseGLB(buf), {}), B = r.byName, AX = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] };
+      ['L_gripper_base', 'L_gripper_finger_left', 'L_gripper_finger_right'].forEach(k => { if (B[k]) B[k].visible = false; });
+      const J = [1, 2, 3, 4, 5, 6].map(i => { const n = B['L_J' + i], sp = spec.joints.find(j => j.name === 'L_J' + i); n.axis = AX[sp.axis]; n.angle = 0; return n; });
+      if (!B.L_BASE || J.some(n => !n)) throw new Error('模型里找不到左臂');
+      nova = { base: B.L_BASE, J };
+      armRoot.children.push(B.L_BASE);
+      armParts.parts.forEach((P3, i) => { if (i <= 5) P3.c.visible = P3.a.visible = P3.b.visible = false; });
+    } catch (e) { nova = null; }   // 没有这个文件就继续用简化外形
   }
   const rootAt = (clip, s) => { G1Motion.sample(clips[clip], s, _ro); return [_ro.pos[0], _ro.pos[1], _ro.pos[2]]; };
 
@@ -36,6 +50,13 @@
     const N = 28, pos = [], nrm = [], idx = [];
     if (kind === 'cyl') {
       for (let i = 0; i < N; i++) { const a = i / N * 6.2832, c = Math.cos(a), s2 = Math.sin(a); pos.push(c, s2, 0, c, s2, 1); nrm.push(c, s2, 0, c, s2, 0); const j = (i + 1) % N; idx.push(i * 2, j * 2, i * 2 + 1, j * 2, j * 2 + 1, i * 2 + 1); }
+      for (const z of [0, 1]) { const c0 = pos.length / 3; pos.push(0, 0, z); nrm.push(0, 0, z ? 1 : -1); for (let i = 0; i < N; i++) { const a = i / N * 6.2832; pos.push(Math.cos(a), Math.sin(a), z); nrm.push(0, 0, z ? 1 : -1); } for (let i = 0; i < N; i++) { const j = (i + 1) % N; if (z) idx.push(c0, c0 + 1 + i, c0 + 1 + j); else idx.push(c0, c0 + 1 + j, c0 + 1 + i); } }
+    } else if (kind === 'box') {
+      for (const [ax, sg] of [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [2, -1]]) {
+        const u = (ax + 1) % 3, v = (ax + 2) % 3, c0 = pos.length / 3, n = [0, 0, 0]; n[ax] = sg;
+        for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const p = [0, 0, 0]; p[ax] = sg * 0.5; p[u] = a * 0.5; p[v] = b * 0.5 * sg; pos.push(...p); nrm.push(...n); }
+        idx.push(c0, c0 + 1, c0 + 2, c0, c0 + 2, c0 + 3);
+      }
     } else {
       const R = 14;
       for (let r = 0; r <= R; r++) for (let i = 0; i <= N; i++) { const th = r / R * Math.PI, a = i / N * 6.2832, x = Math.sin(th) * Math.cos(a), y = Math.sin(th) * Math.sin(a), z = Math.cos(th); pos.push(x, y, z); nrm.push(x, y, z); }
@@ -44,7 +65,7 @@
     const m = { name: kind, prims: [{ pos: new Float32Array(pos), nrm: new Float32Array(nrm), idx: Uint32Array.from(idx), color: [0.8, 0.8, 0.8] }] };
     st.uploadMesh(m); return m;
   }
-  let CYL, SPH;
+  let CYL, SPH, BOX;
   function setSeg(node, a, b, r) {   // 单位圆柱（半径 1、沿 +Z 长 1）→ 从 a 到 b、半径 r
     let d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]; const L = Math.hypot(d[0], d[1], d[2]) || 1e-6; d = d.map(v => v / L);
     let x = Math.abs(d[2]) < 0.9 ? [d[1], -d[0], 0] : [0, d[2], -d[1]]; const xl = Math.hypot(x[0], x[1], x[2]); x = x.map(v => v / xl);
@@ -70,6 +91,31 @@
     mk(SPH, [0.12, 0.12, 0.14], n => setBall(n, [0, 0, 0.175], 0.021, 0.006));
     product = { root: st.node({ name: 'productRoot', children: kids }) };
   }
+  // 方程式赛车：程序化拼出来的通用开轮赛车外形（1:12，长约 0.46 m，车头朝 +x），不是任何一台真实赛车的复刻
+  function buildCar() {
+    BOX = unitMesh('box');
+    const kids = [], BODY = [0.07, 0.11, 0.2], ACC = [1, 0.42, 0.08], CARBON = [0.05, 0.055, 0.065], TYRE = [0.03, 0.03, 0.035], RIM = [0.62, 0.64, 0.68], WHITE = [0.9, 0.91, 0.93];
+    const add = (mesh, color, f) => { const n = st.node({ name: 'car', meshes: [mesh], color }); f(n); kids.push(n); };
+    const ell = (p, r, c) => add(SPH, c, n => { n.base = new Float32Array([r[0], 0, 0, 0, 0, r[1], 0, 0, 0, 0, r[2], 0, p[0], p[1], p[2], 1]); });
+    const box = (p, s, c) => add(BOX, c, n => { n.base = new Float32Array([s[0], 0, 0, 0, 0, s[1], 0, 0, 0, 0, s[2], 0, p[0], p[1], p[2], 1]); });
+    const rod = (a, b, r, c) => add(CYL, c, n => setSeg(n, a, b, r));
+    box([0, 0, 0.011], [0.31, 0.1, 0.006], CARBON);                                   // 底板
+    ell([0.02, 0, 0.034], [0.175, 0.034, 0.022], BODY);                               // 单体壳
+    ell([0.155, 0, 0.03], [0.085, 0.017, 0.013], BODY); ell([0.228, 0, 0.026], [0.014, 0.012, 0.008], ACC);   // 鼻锥
+    for (const s of [1, -1]) { ell([-0.045, s * 0.05, 0.03], [0.09, 0.026, 0.02], BODY); ell([0.035, s * 0.052, 0.033], [0.012, 0.017, 0.013], CARBON); box([-0.05, s * 0.074, 0.033], [0.1, 0.002, 0.012], ACC); }   // 侧箱、进气口、侧面色带
+    ell([-0.1, 0, 0.044], [0.105, 0.021, 0.03], BODY); ell([-0.03, 0, 0.076], [0.03, 0.013, 0.013], CARBON); box([-0.13, 0, 0.066], [0.1, 0.003, 0.03], BODY);   // 引擎盖、进气箱、鲨鱼鳍
+    ell([0.012, 0, 0.052], [0.036, 0.017, 0.008], CARBON); ell([0.004, 0, 0.06], [0.013, 0.012, 0.012], ACC);   // 座舱、头盔
+    rod([0.05, 0, 0.05], [0.036, 0, 0.071], 0.003, CARBON); for (const s of [1, -1]) rod([0.036, 0, 0.071], [-0.026, s * 0.023, 0.066], 0.003, CARBON);   // Halo
+    box([0.215, 0, 0.011], [0.036, 0.165, 0.004], WHITE); box([0.204, 0, 0.019], [0.022, 0.15, 0.003], ACC);   // 前翼
+    for (const s of [1, -1]) { box([0.213, s * 0.082, 0.02], [0.046, 0.003, 0.022], BODY); box([-0.215, s * 0.044, 0.056], [0.05, 0.003, 0.056], BODY); }   // 前后翼端板
+    box([-0.215, 0, 0.08], [0.032, 0.086, 0.004], WHITE); box([-0.218, 0, 0.067], [0.024, 0.086, 0.003], ACC); rod([-0.2, 0, 0.03], [-0.212, 0, 0.066], 0.003, CARBON);   // 尾翼
+    box([-0.2, 0, 0.022], [0.05, 0.075, 0.012], CARBON);                              // 扩散器
+    for (const [x, r, w0] of [[0.15, 0.028, 0.057], [-0.15, 0.029, 0.05]]) for (const s of [1, -1]) {   // 车轮和悬挂
+      rod([x, s * w0, r], [x, s * 0.083, r], r, TYRE); rod([x, s * (w0 - 0.001), r], [x, s * 0.0838, r], r * 0.52, RIM); rod([x, s * (w0 - 0.0015), r], [x, s * 0.0845, r], r * 0.16, ACC);
+      for (const dx of [0.03, -0.03]) { rod([x + dx * (x > 0 ? 1 : 0.6), 0, 0.04], [x, s * w0, r + 0.012], 0.0018, CARBON); rod([x + dx * (x > 0 ? 1 : 0.6), 0, 0.022], [x, s * w0, r - 0.012], 0.0018, CARBON); }
+    }
+    car = { root: st.node({ name: 'carRoot', children: kids }) };
+  }
   const _q = new Array(6), pipCam = { target: [0, 0, 0.3], dist: 2.0, az: -2.5, el: 0.4, fov: 30 }, PIP = [0.69, 0.035, 0.29, 0.36];
   const _ev2 = { cam: {} }, RED = { c: [1, 0.2, 0.16], k: 0.78 }, freeCam = { target: [0, 0, 0.28], dist: 2.5, az: -2.45, el: 0.42, fov: 32 }; let armNow = null, freeKey = '';
   function poseArm(t, subjW) {
@@ -77,10 +123,11 @@
     [{ a: [0, 0, 0], b: KIN.P(F[1]), r: 0.062 }].concat(Cp).forEach((c, i) => { const P3 = armParts.parts[i], A = Wd(c.a), B = Wd(c.b); setSeg(P3.c, A, B, c.r); setBall(P3.a, A, c.r * (i >= 1 && i <= 5 ? 1.12 : 1)); setBall(P3.b, B, c.r); });
     setSeg(armParts.ped, [b[0], b[1], 0], [b[0], b[1], Math.max(b[2], 0.01)], 0.11);
     lensW = Wd(KIN.P(F[7]));
+    if (nova) { nova.base.base = new Float32Array([0.001, 0, 0, 0, 0, 0.001, 0, 0, 0, 0, 0.001, 0, b[0], b[1], b[2], 1]); nova.J.forEach((n, j) => { n.angle = NOVA_MAP.s[j] * _q[j] + NOVA_MAP.o[j]; }); }
     // 干涉：碰到东西的那几段标红（和规划时用的是同一个检测函数）
     const e = Reel.evalAt(tl, t, _ev2), fl = plan.shots[e.seg.base].flags[Math.round(Math.min(Math.max(e.p, 0), 1) * ReelArm.M)];
     const col = ReelArm.collide(F, [subjW[0] - b[0], subjW[1] - b[1], subjW[2] - b[2]], plan.opt);
-    armParts.parts.forEach((P3, i) => { const hit = i >= 1 && (col.mask >> (i - 1) & 1) ? RED : null; P3.c.tintSelf = P3.a.tintSelf = P3.b.tintSelf = hit; });
+    armParts.parts.forEach((P3, i) => { const hit = i >= 1 && (col.mask >> (i - 1) & 1) ? RED : null; P3.c.tintSelf = P3.a.tintSelf = P3.b.tintSelf = hit; if (nova && i >= 1 && i <= 5) nova.J[i].tintSelf = hit; });
     armNow = { flag: fl, hits: col.hits, clr: col.clr };
   }
   function resetFree() {
@@ -104,7 +151,7 @@
     if (opts.sel != null) S.sel = opts.sel;
     script = next; C = c;
     tl = Reel.build(C.shots, C.bpm, { attack: C.attack }); bts = Reel.beats(tl);
-    plan = C.rig.arm ? ReelArm.plan(tl, rootAt, { base: C.rig.base, mount: C.rig.mount, lookUp: C.subject.lookUp, subjectR: C.subject.radius }) : null;
+    plan = C.rig.arm ? ReelArm.plan(tl, rootAt, { base: C.rig.base, mount: C.rig.mount, lookUp: C.subject.lookUp, subjectR: C.subject.radius, subjectHalf: C.subject.half || 0, subjectYaw: C.subject.yaw || 0 }) : null;
     S.sel = Math.min(S.sel, script.shots.length - 1); S.t = Math.min(S.t, tl.dur);
     const fk = S.name + '|' + (plan ? plan.opt.base.join(',') : 'free'); if (fk !== freeKey) { freeKey = fk; resetFree(); }
     if (!opts.keepCode) $('#code').value = SS.stringify(script);
@@ -155,8 +202,9 @@
     cam.target[0] = tx; cam.target[1] = ty; cam.target[2] = tz + C.subject.lookUp;
     cam.az = ev.cam.az; cam.el = ev.cam.el; cam.dist = ev.cam.dist; cam.fov = ev.cam.fov; cam.roll = ev.cam.roll;
     st.light.az = (cam.az - Math.PI / 2) * 180 / Math.PI - 42; st.light.el = 44; st.light.rim = 1.5; st.light.spec = 1.4;
-    const subj = isDuck ? duck.root : product.root;
-    st.shadows.length = 0; st.shadows.push({ c: [sx, sy], r: isDuck ? 0.14 : 0.09 });
+    const isCar = C.subject.type === 'car', subj = isDuck ? duck.root : isCar ? car.root : product.root;
+    if (isCar) { const cy = Math.cos(C.subject.yaw), sy2 = Math.sin(C.subject.yaw); car.root.base = new Float32Array([cy, sy2, 0, 0, -sy2, cy, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); }
+    st.shadows.length = 0; st.shadows.push({ c: [sx, sy], r: isDuck ? 0.14 : isCar ? 0.24 : 0.09 });
     if (plan) poseArm(t, [sx, sy, sz + C.subject.lookUp]); else armNow = null;
     if (S.view === 'free') {   // 自由视角：主画面是站在旁边看整个场景，小窗才是摄影机拍到的
       const la = st.light.az;
@@ -186,7 +234,7 @@
       ctx.strokeStyle = k.ok ? 'rgba(255,255,255,0.35)' : 'rgba(255,133,133,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
       const vp = st.viewProj(pipCam, w / h), pr = p => { const X = vp[0] * p[0] + vp[4] * p[1] + vp[8] * p[2] + vp[12], Y = vp[1] * p[0] + vp[5] * p[1] + vp[9] * p[2] + vp[13], Wc = vp[3] * p[0] + vp[7] * p[1] + vp[11] * p[2] + vp[15]; return [x + (X / Wc * 0.5 + 0.5) * w, y + (0.5 - Y / Wc * 0.5) * h]; };
       if (lensW) { const a = pr(lensW), b2 = pr(cam.target); ctx.strokeStyle = 'rgba(255,122,26,0.9)'; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b2[0], b2[1]); ctx.stroke(); ctx.setLineDash([]); }
-      ctx.font = '600 13px ' + FONT; ctx.fillStyle = 'rgba(232,237,242,0.95)'; ctx.fillText('Nova 5 + Pocket 3（简化外形）', x + 10, y + 20);
+      ctx.font = '600 13px ' + FONT; ctx.fillStyle = 'rgba(232,237,242,0.95)'; ctx.fillText(nova ? 'Nova 5 + Pocket 3' : 'Nova 5 + Pocket 3（简化外形）', x + 10, y + 20);
       ctx.fillStyle = k.ok ? '#ffb27a' : '#ff8585'; ctx.fillText(k.ok ? `真机放慢 ${k.slow.toFixed(1)}× 拍，成片线性加速` : '这个镜头机械臂拍不了：' + k.issues[0], x + 2, y + h + 20);
     }
     if (!S.hud) return;
@@ -414,10 +462,10 @@
   let placing = false;
   async function autoPlace(bt, info) {
     if (placing) return; placing = true; bt.disabled = true;
-    const cands = []; for (const mount of SS.MOUNTS) for (const y of [-0.6, -0.7, -0.8, -0.9, -1.0]) for (const z of [0, 0.15, 0.3]) for (const x of [-0.15, 0.05, 0.25]) cands.push({ base: [x, y, z], mount });
+    const cands = []; for (const mount of SS.MOUNTS) for (const y of [-0.55, -0.65, -0.75, -0.85, -0.95]) for (const z of [0, 0.15, 0.3]) for (const x of [-0.15, 0.05, 0.25]) cands.push({ base: [x, y, z], mount });
     let best = null;
     for (let k = 0; k < cands.length; k++) {
-      const c = cands[k], P = ReelArm.plan(tl, rootAt, { base: c.base, mount: c.mount, lookUp: C.subject.lookUp, subjectR: C.subject.radius });
+      const c = cands[k], P = ReelArm.plan(tl, rootAt, { base: c.base, mount: c.mount, lookUp: C.subject.lookUp, subjectR: C.subject.radius, subjectHalf: C.subject.half || 0, subjectYaw: C.subject.yaw || 0 });
       const clr = Math.min(...P.takes.map(t => t.minClr));
       if (P.ok && clr > 0.04 && (!best || P.slow < best.slow)) best = { slow: P.slow, clr, base: c.base, mount: c.mount };
       if (k % 6 === 5) { info.textContent = `正在试第 ${k + 1} / ${cands.length} 种摆法……`; await new Promise(r => setTimeout(r, 0)); }
@@ -530,12 +578,14 @@
   const ready = load().then(() => {
     SCRIPTS.forEach(n => pick.append(el('option', { value: n, textContent: examples[n].name })));
     openScript(S.name); setView(S.view); msg.hidden = true; frame(0, 1);
+    novaReady = loadNova();
     if (Q.get('render') !== '1') { S.playing = !matchMedia('(prefers-reduced-motion: reduce)').matches && Q.get('autoplay') !== '0'; last = performance.now(); requestAnimationFrame(loop); }
-    return true;
+    return Q.get('render') === '1' ? novaReady.then(() => true) : true;   // 出片时等真实外形到了再开始，免得前几帧是简化外形
   }).catch(e => { msg.textContent = '加载失败：' + e.message; throw e; });
 
+  let novaReady = null;
   window.__reel = {
-    ready, S, fps: FPS, get tl() { return tl; }, get plan() { return plan; }, get script() { return script; }, get armNow() { return armNow; }, freeCam, frame, applyScript, openScript, setView, runRepair,
+    ready, get novaReady() { return novaReady; }, get nova() { return !!nova; }, S, fps: FPS, get tl() { return tl; }, get plan() { return plan; }, get script() { return script; }, get armNow() { return armNow; }, freeCam, frame, applyScript, openScript, setView, runRepair,
     shot(i, n) { frame(i / FPS, n || 12); return out.toDataURL('image/jpeg', 0.92).slice(23); },
   };
 })();

@@ -1,0 +1,181 @@
+{
+  "version": "0.2",
+  "robot_type": "nova5_dual_arm",
+  "unit": "mm",
+  "axes_convention": "Y-up (Three.js)",
+  "platform": {
+    "extents_mm": [
+      1200.0,
+      600.0,
+      50.0
+    ],
+    "top_surface_y": 0.0
+  },
+  "arms": {
+    "left": {
+      "prefix": "L",
+      "x_offset_mm": -300.0
+    },
+    "right": {
+      "prefix": "R",
+      "x_offset_mm": 300.0
+    }
+  },
+  "joints": [
+    {
+      "name": "L_J1",
+      "parent": "L_BASE",
+      "axis": "Z",
+      "pivot": [
+        6.59561355545236e-05,
+        0.000439507405058194,
+        143.5
+      ],
+      "limit_min": -3.14,
+      "limit_max": 3.14
+    },
+    {
+      "name": "L_J2",
+      "parent": "L_J1",
+      "axis": "Y",
+      "pivot": [
+        0.0005665118820448242,
+        -59.782499759314454,
+        96.50033842556473
+      ],
+      "limit_min": -2.36,
+      "limit_max": 2.36
+    },
+    {
+      "name": "L_J3",
+      "parent": "L_J2",
+      "axis": "Y",
+      "pivot": [
+        0.007433488119397102,
+        2.701642239433397,
+        399.9916615744352
+      ],
+      "limit_min": -2.62,
+      "limit_max": 2.62
+    },
+    {
+      "name": "L_J4",
+      "parent": "L_J3",
+      "axis": "Y",
+      "pivot": [
+        0.00020402744867329542,
+        -34.899327630349674,
+        330.01600301566805
+      ],
+      "limit_min": -3.14,
+      "limit_max": 3.14
+    },
+    {
+      "name": "L_J5",
+      "parent": "L_J4",
+      "axis": "Z",
+      "pivot": [
+        -0.00016681445886079956,
+        -43.49998340946472,
+        76.50000940723021
+      ],
+      "limit_min": -2.09,
+      "limit_max": 2.09
+    },
+    {
+      "name": "L_J6",
+      "parent": "L_J5",
+      "axis": "Y",
+      "pivot": [
+        -4.190359453405679e-06,
+        -50.199990566143015,
+        43.50001088655836
+      ],
+      "limit_min": -6.28,
+      "limit_max": 6.28
+    },
+    {
+      "name": "R_J1",
+      "parent": "R_BASE",
+      "axis": "Z",
+      "pivot": [
+        6.59561355545236e-05,
+        0.000439507405058194,
+        143.5
+      ],
+      "limit_min": -3.14,
+      "limit_max": 3.14
+    },
+    {
+      "name": "R_J2",
+      "parent": "R_J1",
+      "axis": "Y",
+      "pivot": [
+        0.0005665118820448242,
+        -59.782499759314454,
+        96.50033842556473
+      ],
+      "limit_min": -2.36,
+      "limit_max": 2.36
+    },
+    {
+      "name": "R_J3",
+      "parent": "R_J2",
+      "axis": "Y",
+      "pivot": [
+        0.007433488119397102,
+        2.701642239433397,
+        399.9916615744352
+      ],
+      "limit_min": -2.62,
+      "limit_max": 2.62
+    },
+    {
+      "name": "R_J4",
+      "parent": "R_J3",
+      "axis": "Y",
+      "pivot": [
+        0.00020402744867329542,
+        -34.899327630349674,
+        330.01600301566805
+      ],
+      "limit_min": -3.14,
+      "limit_max": 3.14
+    },
+    {
+      "name": "R_J5",
+      "parent": "R_J4",
+      "axis": "Z",
+      "pivot": [
+        -0.00016681445886079956,
+        -43.49998340946472,
+        76.50000940723021
+      ],
+      "limit_min": -2.09,
+      "limit_max": 2.09
+    },
+    {
+      "name": "R_J6",
+      "parent": "R_J5",
+      "axis": "Y",
+      "pivot": [
+        -4.190359453405679e-06,
+        -50.199990566143015,
+        43.50001088655836
+      ],
+      "limit_min": -6.28,
+      "limit_max": 6.28
+    }
+  ],
+  "gripper": {
+    "type": "placeholder_parallel",
+    "parent_node_pattern": "{prefix}_J6",
+    "node_pattern_base": "{prefix}_gripper_base",
+    "node_pattern_finger_left": "{prefix}_gripper_finger_left",
+    "node_pattern_finger_right": "{prefix}_gripper_finger_right",
+    "half_open_init_mm": 20.0,
+    "half_open_max_mm": 30.0,
+    "half_open_min_mm": 4.0,
+    "note": "真实 Xtrainer 夹爪 CAD 未提供，此为程序化简化几何占位"
+  }
+}

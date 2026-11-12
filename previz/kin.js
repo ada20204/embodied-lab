@@ -2,8 +2,8 @@
 var KIN=(function(){
 'use strict';
 const D2R=Math.PI/180,R2D=180/Math.PI;
-/* 近似 Nova 5（UR 型标准 DH，单位 m） */
-const DH={d:[0.24,0,0,0.135,0.12,0.09],a:[0,-0.42,-0.36,0,0,0],al:[Math.PI/2,0,0,Math.PI/2,-Math.PI/2,0]};
+/* Nova 5（UR 型标准 DH，单位 m）。连杆长度按实体模型的关节轴位置取：大臂 0.40、小臂 0.33；限位和限速仍是近似 */
+const DH={d:[0.24,0,0,0.135,0.12,0.09],a:[0,-0.4,-0.33,0,0,0],al:[Math.PI/2,0,0,Math.PI/2,-Math.PI/2,0]};
 /* ---------- DJI Osmo Pocket 3（外形 139.7×42.2×33.5 mm，179 g） ----------
    Pocket 坐标系：原点=手柄底面中心，+Y 沿手柄向上，+Z=镜头朝向，屏幕在 -Z 面 */
 const POCKET={w:0.0422,d:0.0335,handleH:0.1,lensY:0.1215,lensZ:0.013,mass:0.179};

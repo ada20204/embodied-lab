@@ -39,7 +39,7 @@ test('导出的 CSV：7 列、时间递增、时长等于真机时长', () => {
 
 // ---- 干涉检测与自动修正 ----
 import { load as loadScript, rootAt as rootAt2, R as R2, A as A2, S as S2, clipDur as clipDur2, readScript as readScript2 } from './_studio.mjs';
-function planOf(sc) { const c = S2.compile(sc, clipDur2), tl2 = R2.build(c.shots, c.bpm, { attack: c.attack }); const o = { base: c.rig.base, mount: c.rig.mount, lookUp: c.subject.lookUp, subjectR: c.subject.radius }; return { tl: tl2, o, plan: A2.plan(tl2, rootAt2, o) }; }
+function planOf(sc) { const c = S2.compile(sc, clipDur2), tl2 = R2.build(c.shots, c.bpm, { attack: c.attack }); const o = { base: c.rig.base, mount: c.rig.mount, lookUp: c.subject.lookUp, subjectR: c.subject.radius, subjectHalf: c.subject.half || 0, subjectYaw: c.subject.yaw || 0 }; return { tl: tl2, o, plan: A2.plan(tl2, rootAt2, o) }; }
 
 test('干涉检测：示例脚本全程没有干涉；把机位怼到主体上会报“碰到主体”，并指出是哪一段', () => {
   const ok = planOf(readScript2('duck-arm'));
@@ -64,4 +64,17 @@ test('自动修正：够不着的镜头能改成拍得了的，而且只在原�
 test('自动修正：本来就没问题的镜头不会被改', () => {
   const b = planOf(readScript2('duck-arm')); let last; for (const step of A2.repair(b.tl.segs[0], rootAt2, b.o)) last = step;
   assert.ok(last.ok && !last.changed);
+});
+
+test('赛车脚本：全部镜头机械臂可达、全程无干涉；长条主体按横放的胶囊体检查，朝向会影响结果', () => {
+  const sc = readScript2('car-arm'), c = S2.compile(sc, clipDur2), tl2 = R2.build(c.shots, c.bpm, { attack: c.attack });
+  const o = { base: c.rig.base, mount: c.rig.mount, lookUp: c.subject.lookUp, subjectR: c.subject.radius, subjectHalf: c.subject.half, subjectYaw: c.subject.yaw };
+  const P2 = A2.plan(tl2, rootAt2, o);
+  assert.ok(P2.ok, P2.takes.filter(t => !t.ok).map(t => t.name + '：' + t.issues.join('；')).join(' / '));
+  assert.ok(Math.abs(c.subject.yaw - (-40 * Math.PI / 180)) < 1e-9);
+  for (let t = 0.05; t < tl2.dur; t += 0.29) assert.equal(A2.stateAt(P2, t).mask, 0);
+  // 同一个姿态：主体当成一个球时没事，当成一根朝着机械臂伸过来的长条就碰上了
+  const F = A2.stateAt(P2, 0.05).F, lens = [F[7][3], F[7][7], F[7][11]], subj = [lens[0], lens[1] + 0.3, lens[2]];
+  assert.equal(A2.collide(F, subj, Object.assign({}, P2.opt, { subjectHalf: 0, subjectR: 0.05 })).hits.filter(h => h.what === 'subject').length, 0);
+  assert.ok(A2.collide(F, subj, Object.assign({}, P2.opt, { subjectHalf: 0.3, subjectYaw: Math.PI / 2, subjectR: 0.05 })).hits.some(h => h.what === 'subject'));
 });
