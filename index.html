@@ -184,7 +184,8 @@ const NOTES=[
   ['03-arm-learning','机械臂怎么学技能','ACT / VLA / π / agentic / RL，Nova 接 LeRobot'],
   ['04-motion-control','影视运动控制：系统架构','工作流、数字孪生、AI 摄影指导、MuJoCo'],
   ['05-previz-devlog','运镜预演台开发记录','v1 → v4 的问题、修复和数据'],
-  ['06-roadmap','下一步','近期、中期、双臂与 G1、作品集缺口']
+  ['06-roadmap','下一步','近期、中期、双臂与 G1、作品集缺口'],
+  ['07-studio-plan','拍摄 Studio 最佳效果规划','材质贴图、固定布光、地台阴影、多物体、导出']
 ];
 const $=id=>document.getElementById(id);
 $('noteCards').innerHTML=NOTES.map(([id,t,d],i)=>`<a class="note-card" href="#/notes/${id}"><small>${String(i+1).padStart(2,'0')}</small><strong>${t}</strong><span>${d}</span></a>`).join('');

@@ -3,7 +3,9 @@
  * 一份脚本 = 场景（机械臂怎么摆、镜头视角）+ 主体（谁在演）+ 镜头列表。角度一律用“度”，距离用“米”，时间用“秒”。
  * {
  *   "name": "…", "bpm": 100, "attack": 0.12,
- *   "subject": { "type": "duck" | "product" },
+ *   "subject": { "type": "duck" | "product" | "car" | "custom", "yaw": 0 },
+ *     custom 是导入的 glb：{ "type": "custom", "name": "W11.glb", "hash": "sha256-…", "up": "y", "dims": [长, 宽, 高] }。
+ *     脚本只记文件指纹和尺寸，不存模型本身；模型不在内存里时画同尺寸的方块，规划和干涉照常按尺寸算。
  *   "rig": { "arm": true, "base": [x, y, z], "mount": "invert" | "side" | "bottom", "fov": 54 },
  *   "shots": [
  *     { "name": "…", "clip": "kick_left", "from": 0.55, "to": 1.5, "beats": 2, "ease": 3,
@@ -21,7 +23,13 @@
     duck: { label: '小鸭子（仿真动作）', lookUp: 0.03, radius: 0.11, clips: true },
     product: { label: '静物 / 产品', lookUp: 0.085, radius: 0.075, clips: false },
     car: { label: '方程式赛车模型（1:12，车头朝 +x）', lookUp: 0.04, radius: 0.1, half: 0.14, clips: false },   // half：沿车长方向的半长（碰撞按一根横放的胶囊体算）
+    custom: { label: '导入的模型', clips: false },   // lookUp / radius / half 按 dims 算，见 envelope
   };
+  /** 导入模型的碰撞包络：沿 x 横放的胶囊体，中心在半高处。半径盖住宽和高的一半，轴线两头留到长度两端 */
+  function envelope(dims) {
+    const [L, Wd, H] = dims, r = Math.max(Wd, H) / 2;
+    return { lookUp: H / 2, radius: r, half: Math.max(0, L / 2 - r) };
+  }
   const MOUNTS = ['invert', 'side', 'bottom'];
   const DEF_RIG = { arm: true, base: [0.05, -0.85, 0.3], mount: 'invert', fov: 54 };
   const RANGE = {   // 面板滑块和校验共用
@@ -39,6 +47,12 @@
     const sub = sc.subject && SUBJECTS[sc.subject.type];
     if (!sub) E.push(`subject.type 要写 ${Object.keys(SUBJECTS).join(' 或 ')}`);
     if (sc.subject && sc.subject.yaw !== undefined && !(num(sc.subject.yaw) && Math.abs(sc.subject.yaw) <= 180)) E.push('subject.yaw 要在 −180 到 180 度之间');
+    if (sub && sc.subject.type === 'custom') {
+      const s = sc.subject;
+      if (!(Array.isArray(s.dims) && s.dims.length === 3 && s.dims.every(v => num(v) && v > 0.005 && v <= 1.5))) E.push('subject.dims 要写成 [长, 宽, 高]（米），每项在 0.005–1.5 之间');
+      if (typeof s.name !== 'string' || typeof s.hash !== 'string') E.push('导入的模型要记 subject.name（文件名）和 subject.hash（文件指纹）');
+      if (s.up !== undefined && s.up !== 'y' && s.up !== 'z') E.push('subject.up 要写 y 或 z');
+    }
     if (sc.bpm !== undefined && !(num(sc.bpm) && sc.bpm >= 30 && sc.bpm <= 240)) E.push('bpm 要在 30–240 之间');
     if (sc.attack !== undefined && !(num(sc.attack) && sc.attack >= 0 && sc.attack <= 0.6)) E.push('attack 要在 0–0.6 之间');
     const rig = sc.rig || {};
@@ -70,7 +84,9 @@
   function compile(sc, clipDur) {
     const errs = validate(sc, clipDur);
     if (errs.length) { const e = new Error(errs.join('\n')); e.issues = errs; throw e; }
-    const sub = Object.assign({ type: sc.subject.type, yaw: (sc.subject.yaw || 0) * D2R }, SUBJECTS[sc.subject.type]), rig = Object.assign({}, DEF_RIG, sc.rig || {});
+    const sub = Object.assign({ type: sc.subject.type, yaw: (sc.subject.yaw || 0) * D2R }, SUBJECTS[sc.subject.type]);
+    if (sub.type === 'custom') Object.assign(sub, envelope(sc.subject.dims), { name: sc.subject.name, hash: sc.subject.hash, up: sc.subject.up || 'y', dims: sc.subject.dims.slice(), label: '导入的模型：' + sc.subject.name });
+    const rig = Object.assign({}, DEF_RIG, sc.rig || {});
     const rad = p => [p[0] * D2R, p[1] * D2R];
     const shots = sc.shots.map(sh => {
       const o = { name: sh.name || '', beats: sh.beats, k: sh.ease || 3 };
@@ -123,7 +139,7 @@
     return '{\n' + head.join(',\n') + ',\n  "shots": [\n' + sc.shots.map(s => '    ' + JSON.stringify(s)).join(',\n') + '\n  ]\n}';
   }
 
-  const api = { SUBJECTS, MOUNTS, DEF_RIG, RANGE, validate, compile, clone, baseIndex, isBase, addShot, removeShot, moveShot, stringify };
+  const api = { SUBJECTS, MOUNTS, DEF_RIG, RANGE, envelope, validate, compile, clone, baseIndex, isBase, addShot, removeShot, moveShot, stringify };
   root.StudioScript = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
