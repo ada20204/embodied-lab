@@ -9,7 +9,7 @@
   const SCRIPTS = ['duck-arm', 'car-arm', 'product-arm', 'duck-free'];
   const out = $('#out'), ctx = out.getContext('2d'), glc = $('#gl'), msg = $('#msg');
   const st = window.Stage3D.create(glc, { pixelRatio: 1, bg: [0.035, 0.04, 0.05] });
-  const S = { t: 0, playing: false, lock: Q.get('lock') !== '0', blur: Q.get('blur') !== '0', hud: Q.get('hud') !== '0', snd: false, samples: +Q.get('samples') || 5, sel: 0, end: 0, view: Q.get('view') === 'free' ? 'free' : 'cam', name: SCRIPTS.includes(Q.get('script')) ? Q.get('script') : SCRIPTS[0] };
+  const S = { t: 0, playing: false, lock: Q.get('lock') !== '0', blur: Q.get('blur') !== '0', hud: Q.get('hud') !== '0', pip: Q.get('pip') !== '0', snd: false, samples: +Q.get('samples') || 5, sel: 0, end: 0, view: Q.get('view') === 'free' ? 'free' : 'cam', name: SCRIPTS.includes(Q.get('script')) ? Q.get('script') : SCRIPTS[0] };
   const examples = {}, clips = {}, clipDur = {};
   let script = null, C = null, tl = null, bts = [], plan = null, duck = null, product = null, car = null, nova = null;
   const ev = { cam: {} }, mo = G1Motion.makeOut(), pose = {}, anchor = G1Motion.makeOut(), _ro = G1Motion.makeOut();
@@ -211,14 +211,21 @@
       st.light.az = (freeCam.az - Math.PI / 2) * 180 / Math.PI - 42; if (plan) st.shadows.push({ c: [plan.opt.base[0], plan.opt.base[1]], r: 0.3 });
       st.render({ roots: plan ? [subj, armRoot] : [subj], camera: freeCam, gridCenter: [freeCam.target[0], freeCam.target[1]], gridScale: 0.6, gridColor: [0.45, 0.55, 0.68] });
       st.light.az = la; st.shadows.length = 1;
-      st.render({ roots: [subj], camera: cam, viewport: PIP, gridCenter: [sx, sy], gridScale: 0.4, gridColor: [0.55, 0.66, 0.80] });
+      if (S.pip) st.render({ roots: [subj], camera: cam, viewport: PIP, gridCenter: [sx, sy], gridScale: 0.4, gridColor: [0.55, 0.66, 0.80] });
       return;
     }
     st.render({ roots: [subj], camera: cam, gridCenter: [sx, sy], gridScale: 0.4, gridColor: [0.55, 0.66, 0.80] });
-    if (plan && !S.clean) {
-      const b = plan.opt.base; pipCam.target[0] = (b[0] + sx) / 2; pipCam.target[1] = (b[1] + sy) / 2;
-      st.light.az = -60; st.shadows.push({ c: [b[0], b[1]], r: 0.3 });
-      st.render({ roots: [subj, armRoot], camera: pipCam, viewport: PIP, gridCenter: [pipCam.target[0], pipCam.target[1]], gridScale: 0.6, gridColor: [0.45, 0.55, 0.68] });
+    if (S.pip) {   // 小窗：站在旁边看现场。有机械臂就把它也框进来；自由镜头只有主体，机位路径和视锥在叠加层里画
+      if (plan) { const b = plan.opt.base; pipCam.target[0] = (b[0] + sx) / 2; pipCam.target[1] = (b[1] + sy) / 2; pipCam.target[2] = 0.3; pipCam.dist = 2.0; st.shadows.push({ c: [b[0], b[1]], r: 0.3 }); }
+      else {   // 自由镜头：把这个镜头的整条机位路径和主体一起框进小窗
+        const P2 = eyePath(tl.segs[ev.seg.base]), lo = [sx, sy, 0], hi = [sx, sy, sz + 0.25];
+        for (const q of P2) for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], q[i]); hi[i] = Math.max(hi[i], q[i]); }
+        const r = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2;
+        for (let i = 0; i < 3; i++) pipCam.target[i] = (lo[i] + hi[i]) / 2;
+        pipCam.dist = Math.max(1.0, r / Math.tan(pipCam.fov * Math.PI / 360) * 1.05);
+      }
+      st.light.az = -60;
+      st.render({ roots: plan ? [subj, armRoot] : [subj], camera: pipCam, viewport: PIP, gridCenter: [pipCam.target[0], pipCam.target[1]], gridScale: 0.6, gridColor: [0.45, 0.55, 0.68] });
     }
   }
   const FONT = '-apple-system, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif';
@@ -229,14 +236,14 @@
     g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.55)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     if (ev.seg.cut && ev.sinceCut < 0.09) { ctx.fillStyle = `rgba(255,255,255,${0.22 * (1 - ev.sinceCut / 0.09)})`; ctx.fillRect(0, 0, W, H); }
     ctx.textBaseline = 'alphabetic';
-    if (S.clean) return;                                   // 干净成片：不画小窗、字幕、节拍条
-    if (plan) {   // 小窗边框、视线、放慢倍数
-      const x = PIP[0] * W, y = PIP[1] * H, w = PIP[2] * W, h = PIP[3] * H, k = plan.takes.find(q => q.seg === ev.seg.base);
-      ctx.strokeStyle = k.ok ? 'rgba(255,255,255,0.35)' : 'rgba(255,133,133,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-      const vp = st.viewProj(pipCam, w / h), pr = p => { const X = vp[0] * p[0] + vp[4] * p[1] + vp[8] * p[2] + vp[12], Y = vp[1] * p[0] + vp[5] * p[1] + vp[9] * p[2] + vp[13], Wc = vp[3] * p[0] + vp[7] * p[1] + vp[11] * p[2] + vp[15]; return [x + (X / Wc * 0.5 + 0.5) * w, y + (0.5 - Y / Wc * 0.5) * h]; };
-      if (lensW) { const a = pr(lensW), b2 = pr(cam.target); ctx.strokeStyle = 'rgba(255,122,26,0.9)'; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b2[0], b2[1]); ctx.stroke(); ctx.setLineDash([]); }
-      ctx.font = '600 13px ' + FONT; ctx.fillStyle = 'rgba(232,237,242,0.95)'; ctx.fillText(nova ? 'Nova 5 + Pocket 3' : 'Nova 5 + Pocket 3（简化外形）', x + 10, y + 20);
-      ctx.fillStyle = k.ok ? '#ffb27a' : '#ff8585'; ctx.fillText(k.ok ? `真机放慢 ${k.slow.toFixed(1)}× 拍，成片线性加速` : '这个镜头机械臂拍不了：' + k.issues[0], x + 2, y + h + 20);
+    if (S.pip) {   // 小窗：现场全景 + 这个镜头的机位路径和此刻的视锥；有机械臂时再标放慢倍数
+      const x = PIP[0] * W, y = PIP[1] * H, w = PIP[2] * W, h = PIP[3] * H, k = plan ? plan.takes.find(q => q.seg === ev.seg.base) : null;
+      ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+      drawRig(projector(pipCam, x, y, w, h), 0.55);
+      ctx.restore();
+      ctx.strokeStyle = !k || k.ok ? 'rgba(255,255,255,0.35)' : 'rgba(255,133,133,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      ctx.font = '600 13px ' + FONT; ctx.fillStyle = 'rgba(232,237,242,0.95)'; ctx.fillText(!plan ? '现场 · 自由镜头（没有机械臂）' : nova ? '现场 · Nova 5 + Pocket 3' : '现场 · Nova 5 + Pocket 3（简化外形）', x + 10, y + 20);
+      if (k) { ctx.fillStyle = k.ok ? '#ffb27a' : '#ff8585'; ctx.fillText(k.ok ? `真机放慢 ${k.slow.toFixed(1)}× 拍，成片线性加速` : '这个镜头机械臂拍不了：' + k.issues[0], x + 2, y + h + 20); }
     }
     if (!S.hud) return;
     hudBar(t);
@@ -244,26 +251,29 @@
   }
   const projector = (camObj, x, y, w, h) => { const vp = st.viewProj(camObj, w / h); return p => { const Wc = vp[3] * p[0] + vp[7] * p[1] + vp[11] * p[2] + vp[15]; if (Wc < 0.02) return null; return [x + ((vp[0] * p[0] + vp[4] * p[1] + vp[8] * p[2] + vp[12]) / Wc * 0.5 + 0.5) * w, y + (0.5 - (vp[1] * p[0] + vp[5] * p[1] + vp[9] * p[2] + vp[13]) / Wc * 0.5) * h]; }; };
   const FLAGTXT = fl => fl & 1 ? '够不着' : fl & 2 ? '关节超出限位' : '';
-  function overlayFree(t) {
-    const pr = projector(freeCam, 0, 0, W, H), seg = tl.segs[ev.seg.base], R = plan ? plan.shots[ev.seg.base] : null, path = R ? R.path : eyePath(seg);
+  // 这个镜头的机位路径（绿 = 拍得了，红 = 够不着 / 超限位 / 干涉，蓝 = 自由镜头不检查）和此刻的视锥；k 是线宽和视锥的缩放
+  function drawRig(pr, k) {
+    const seg = tl.segs[ev.seg.base], R = plan ? plan.shots[ev.seg.base] : null, path = R ? R.path : eyePath(seg);
     const line = (a, b) => { if (a && b) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); } };
-    // 这个镜头的机位路径：绿 = 拍得了，红 = 够不着 / 超限位 / 干涉
-    ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.lineWidth = 3 * k; ctx.lineCap = 'round';
     for (let i = 1; i < path.length; i++) { const bad = R && (R.flags[i] || R.flags[i - 1]); ctx.strokeStyle = !R ? 'rgba(124,196,255,0.9)' : bad ? 'rgba(255,110,110,0.95)' : 'rgba(95,208,138,0.9)'; line(pr(path[i - 1]), pr(path[i])); }
     const dot = (p, r, c) => { const q = pr(p); if (q) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(q[0], q[1], r, 0, 6.2832); ctx.fill(); } };
-    dot(path[0], 5, 'rgba(232,237,242,0.95)'); dot(path[path.length - 1], 5, 'rgba(232,237,242,0.45)');
+    dot(path[0], 5 * k, 'rgba(232,237,242,0.95)'); dot(path[path.length - 1], 5 * k, 'rgba(232,237,242,0.45)');
     // 这一刻的摄影机：视线和视锥
     const eu = Reel.eyeUp(cam, cam.target), E = eu.eye, f = [cam.target[0] - E[0], cam.target[1] - E[1], cam.target[2] - E[2]], fl = Math.hypot(f[0], f[1], f[2]) || 1; f[0] /= fl; f[1] /= fl; f[2] /= fl;
     let r = [f[1] * eu.up[2] - f[2] * eu.up[1], f[2] * eu.up[0] - f[0] * eu.up[2], f[0] * eu.up[1] - f[1] * eu.up[0]]; const rl = Math.hypot(r[0], r[1], r[2]) || 1; r = r.map(v => v / rl);
     const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]], d = 0.16, th = Math.tan(cam.fov * Math.PI / 360) * d, tw = th * W / H;
     const cs = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => pr([E[0] + f[0] * d + r[0] * tw * a + u[0] * th * b, E[1] + f[1] * d + r[1] * tw * a + u[1] * th * b, E[2] + f[2] * d + r[2] * tw * a + u[2] * th * b])), e0 = pr(E);
-    ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,122,26,0.95)'; cs.forEach((c, i) => { line(e0, c); line(c, cs[(i + 1) % 4]); });
-    ctx.setLineDash([6, 5]); line(e0, pr(cam.target)); ctx.setLineDash([]);
-    dot(cam.target, 4, '#ff7a1a');
+    ctx.lineWidth = 1.5 * Math.max(k, 0.7); ctx.strokeStyle = 'rgba(255,122,26,0.95)'; cs.forEach((c, i) => { line(e0, c); line(c, cs[(i + 1) % 4]); });
+    ctx.setLineDash([6 * k, 5 * k]); line(e0, pr(cam.target)); ctx.setLineDash([]);
+    dot(cam.target, 4 * k, '#ff7a1a');
+  }
+  function overlayFree(t) {
+    drawRig(projector(freeCam, 0, 0, W, H), 1);
     // 小窗：摄影机拍到的画面
     const x = PIP[0] * W, y = PIP[1] * H, w = PIP[2] * W, h = PIP[3] * H;
-    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    ctx.textBaseline = 'alphabetic'; ctx.font = '600 13px ' + FONT; ctx.fillStyle = 'rgba(232,237,242,0.95)'; ctx.fillText('摄影机画面', x + 10, y + 20);
+    ctx.textBaseline = 'alphabetic';
+    if (S.pip) { ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1); ctx.font = '600 13px ' + FONT; ctx.fillStyle = 'rgba(232,237,242,0.95)'; ctx.fillText('摄影机画面', x + 10, y + 20); }
     // 这一刻的状态
     let txt, bad = false;
     if (!plan) txt = '自由镜头：只画机位路径，不检查机械臂';
@@ -532,6 +542,7 @@
 
   // ---- 标签页、脚本编辑、播放 ----
   const TABS = ['shot', 'rig', 'take', 'code', 'out'];
+  $('#tab-out').addEventListener('click', () => { $('#ex-hud').checked = S.hud; $('#ex-pip').checked = S.pip; });   // 导出默认就是现在看到的画面
   TABS.forEach(k => $('#tab-' + k).addEventListener('click', () => TABS.forEach(j => { $('#tab-' + j).setAttribute('aria-selected', String(j === k)); $('#pane-' + j).hidden = j !== k; })));
   $('#apply').addEventListener('click', () => {
     let obj; try { obj = JSON.parse($('#code').value); } catch (e) { $('#codeErrs').textContent = '不是合法的 JSON：' + e.message; return; }
@@ -557,10 +568,10 @@
     g.gain.setValueAtTime(strong ? 0.6 : 0.3, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
     o.connect(g).connect(ac.destination); o.start(now); o.stop(now + 0.18);
   }
-  const ui = { play: $('#play'), tc: $('#tc'), lock: $('#lock'), blur: $('#blur'), hud: $('#hud'), snd: $('#snd'), head: $('#head'), lane: $('#laneShots') };
+  const ui = { play: $('#play'), tc: $('#tc'), lock: $('#lock'), blur: $('#blur'), hud: $('#hud'), pip: $('#pip'), snd: $('#snd'), head: $('#head'), lane: $('#laneShots') };
   function syncUi() {
     ui.play.textContent = S.playing ? '❚❚ 暂停' : '▶ 播放'; ui.play.setAttribute('aria-pressed', String(S.playing));
-    for (const k of ['lock', 'blur', 'hud', 'snd']) ui[k].setAttribute('aria-pressed', String(S[k]));
+    for (const k of ['lock', 'blur', 'hud', 'pip', 'snd']) ui[k].setAttribute('aria-pressed', String(S[k]));
     ui.tc.textContent = `${S.t.toFixed(2)} / ${tl.dur.toFixed(2)} 秒`;
     ui.head.style.left = (ui.lane.offsetLeft + ui.lane.offsetWidth * S.t / tl.dur) + 'px';
   }
@@ -575,7 +586,7 @@
     frame(S.t, S.blur ? S.samples : 1); syncUi();
   }
   ui.play.addEventListener('click', () => { S.playing = !S.playing; });
-  for (const k of ['lock', 'blur', 'hud', 'snd']) ui[k].addEventListener('click', () => { S[k] = !S[k]; if (k === 'snd' && S.snd) tick(true); });
+  for (const k of ['lock', 'blur', 'hud', 'pip', 'snd']) ui[k].addEventListener('click', () => { S[k] = !S[k]; if (k === 'snd' && S.snd) tick(true); });
 
   // ---- 导出视频：不实时，逐帧画完再编码，所以慢机器出来的也是顺滑的 30 帧成片 ----
   let exporting = false, exportUrl = null;
@@ -592,8 +603,8 @@
     if (!window.VideoEncoder || !window.VideoFrame) throw new Error('这个浏览器不支持网页内视频编码（WebCodecs）。请用新版 Chrome、Edge 或 Safari。');
     const cfg = { codec: 'avc1.640028', width: W, height: H, bitrate: opt.bitrate || 12e6, framerate: FPS, avc: { format: 'avc' } };
     if (!(await VideoEncoder.isConfigSupported(cfg)).supported) { cfg.codec = 'avc1.42E01F'; if (!(await VideoEncoder.isConfigSupported(cfg)).supported) throw new Error('这个浏览器不能编码 H.264 视频。'); }
-    const keep = { t: S.t, playing: S.playing, view: S.view, clean: S.clean, hud: S.hud };
-    exporting = true; S.playing = false; if (S.view !== 'cam') setView('cam'); S.clean = !!opt.clean; S.hud = true;
+    const keep = { t: S.t, playing: S.playing, view: S.view, hud: S.hud, pip: S.pip };
+    exporting = true; S.playing = false; if (S.view !== 'cam') setView('cam'); S.hud = !!opt.hud; S.pip = !!opt.pip;
     const vs = [], as = []; let avcC = null, asc = null, err = null;
     const venc = new VideoEncoder({ output: (c, m) => { const d = new Uint8Array(c.byteLength); c.copyTo(d); vs.push({ data: d, key: c.type === 'key' }); if (m && m.decoderConfig && m.decoderConfig.description) avcC = new Uint8Array(m.decoderConfig.description.buffer || m.decoderConfig.description); }, error: e => { err = e; } });
     venc.configure(cfg);
@@ -629,13 +640,13 @@
       return { blob: new Blob([bytes], { type: 'video/mp4' }), bytes, frames: n, note };
     } finally {
       try { venc.close(); } catch (e) { /* 已经关了 */ }
-      S.clean = keep.clean; S.hud = keep.hud; if (keep.view !== 'cam') setView(keep.view); S.t = keep.t; S.playing = keep.playing; exporting = false; last = performance.now();
+      S.hud = keep.hud; S.pip = keep.pip; if (keep.view !== 'cam') setView(keep.view); S.t = keep.t; S.playing = keep.playing; exporting = false; last = performance.now();
     }
   }
   (function exportPane() {
     const p = $('#pane-out'), row = (label, ctl) => el('div', { className: 'row wide' }, [el('label', { htmlFor: ctl.id, textContent: label }), ctl]);
     const sel = (id, opts) => { const s = el('select', { id }); opts.forEach(([v, t]) => s.append(el('option', { value: v, textContent: t }))); return s; };
-    const look = sel('ex-look', [['full', '带字幕和机械臂小窗'], ['clean', '干净成片（只有画面）']]), q = sel('ex-q', [['8', '标准（每帧画 8 次）'], ['4', '快速（每帧画 4 次）'], ['16', '精细（每帧画 16 次）'], ['1', '不做运动模糊']]), snd = sel('ex-snd', [['1', '带节拍声'], ['0', '无声']]);
+    const chk = (id, text) => { const c = el('input', { type: 'checkbox', id }); return [c, el('label', { className: 'chk' }, [c, document.createTextNode(' ' + text)])]; }, [eHud, lHud] = chk('ex-hud', '字幕和节拍条'), [ePip, lPip] = chk('ex-pip', '小窗'), q = sel('ex-q', [['8', '标准（每帧画 8 次）'], ['4', '快速（每帧画 4 次）'], ['16', '精细（每帧画 16 次）'], ['1', '不做运动模糊']]), snd = sel('ex-snd', [['1', '带节拍声'], ['0', '无声']]);
     const go = el('button', { type: 'button', id: 'ex-go', textContent: '导出 MP4' }), stop = el('button', { type: 'button', id: 'ex-stop', textContent: '取消', hidden: true });
     const bar = el('progress', { id: 'ex-bar', max: 1, value: 0, hidden: true }), info = el('p', { className: 'note', id: 'ex-info', textContent: '1280×720、30 帧/秒的 H.264 视频。导出不是实时录屏：每一帧画完再编码，电脑慢只会导得久一点，不会掉帧。' });
     const res = el('div', { id: 'ex-res', className: 'exres', hidden: true });
@@ -645,9 +656,9 @@
       if (exporting) return; signal = { cancelled: false }; go.disabled = true; stop.hidden = false; bar.hidden = false; bar.value = 0; res.hidden = true;
       const t0 = performance.now();
       try {
-        const r = await exportVideo({ clean: look.value === 'clean', samples: +q.value, sound: snd.value === '1', signal }, (f, t) => { bar.value = f; info.textContent = t; });
+        const r = await exportVideo({ hud: eHud.checked, pip: ePip.checked, samples: +q.value, sound: snd.value === '1', signal }, (f, t) => { bar.value = f; info.textContent = t; });
         if (exportUrl) URL.revokeObjectURL(exportUrl); exportUrl = URL.createObjectURL(r.blob);
-        const name = `${S.name}${look.value === 'clean' ? '-clean' : ''}.mp4`, v = el('video', { src: exportUrl, controls: true, loop: true, playsInline: true }), a = el('a', { href: exportUrl, download: name, className: 'savebtn', textContent: '保存 ' + name });
+        const name = `${S.name}${!eHud.checked && !ePip.checked ? '-clean' : ''}.mp4`, v = el('video', { src: exportUrl, controls: true, loop: true, playsInline: true }), a = el('a', { href: exportUrl, download: name, className: 'savebtn', textContent: '保存 ' + name });
         v.setAttribute('aria-label', '导出的视频预览');
         a.addEventListener('click', async e2 => {   // 内嵌在 Claude 里时浏览器自己的下载被禁用，走平台的保存确认
           if (!dl) return; e2.preventDefault();
@@ -660,7 +671,7 @@
       go.disabled = false; stop.hidden = true; bar.hidden = true;
     });
     stop.addEventListener('click', () => { if (signal) signal.cancelled = true; });
-    p.append(row('画面', look), row('运动模糊', q), row('声音', snd), el('div', { className: 'btns' }, [go, stop]), bar, info, res);
+    p.append(el('div', { className: 'row wide' }, [el('span', { textContent: '画面里带' }), el('span', { className: 'chks' }, [lHud, lPip])]), row('运动模糊', q), row('声音', snd), el('div', { className: 'btns' }, [go, stop]), bar, info, res);
   })();
 
   const ready = load().then(() => {

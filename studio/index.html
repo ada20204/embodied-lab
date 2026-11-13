@@ -81,6 +81,7 @@
   .seg { display: inline-flex; } .seg button:first-child { border-radius: 8px 0 0 8px; } .seg button:last-child { border-radius: 0 8px 8px 0; margin-left: -1px; }
   progress { width: 100%; accent-color: var(--accent); } .exres { display: grid; gap: 8px; } .exres video { width: 100%; border-radius: 8px; background: #000; }
   .savebtn { display: inline-block; text-align: center; background: var(--accent); color: #1a0e04; font-weight: 600; text-decoration: none; border-radius: 8px; padding: 9px 14px; }
+  .chks { display: flex; gap: 14px; flex-wrap: wrap; } .chk { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
   .fix { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .fix .note { flex: 1 1 160px; }
   .ends { position: absolute; left: 10px; top: 10px; display: flex; gap: 4px; align-items: center; background: rgba(11,13,16,0.72); border: 1px solid var(--line); border-radius: 9px; padding: 4px 6px; font-size: 12px; color: var(--dim); }
   .ends button { min-height: 28px; padding: 2px 9px; font-size: 12px; }
@@ -119,6 +120,7 @@
         <button id="lock" type="button" aria-pressed="true" title="镜头注视点每帧跟着主体">稳帧</button>
         <button id="blur" type="button" aria-pressed="true" title="每帧多画几次再叠加">运动模糊</button>
         <button id="hud" type="button" aria-pressed="true" title="画面里的速率和节拍字幕">字幕</button>
+        <button id="pip" type="button" aria-pressed="true" title="右上角小窗：镜头视角下是现场全景（机械臂、机位路径），自由视角下是摄影机画面">小窗</button>
         <button id="snd" type="button" aria-pressed="false" title="播放时在节拍点出声">节拍声</button>
       </div>
       <div class="tracks" aria-label="时间轴">
