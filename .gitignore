@@ -2,3 +2,4 @@
 node_modules/
 # Worker 本地密钥
 worker/.dev.vars
+dist/

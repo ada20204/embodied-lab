@@ -1,11 +1,11 @@
 :root{
-  --bg:#0e1013; --panel:rgba(16,19,24,.80); --line:rgba(255,255,255,.09);
+  color-scheme:dark; --bg:#0e1013; --panel:rgba(16,19,24,.80); --line:rgba(255,255,255,.09);
   --text:#e6e9ee; --dim:#9aa3b0; --accent:#7cc4ff;
   --real:#4ade80; --board:#22d3ee; --sim:#94a3b8; --demo:#fbbf24; --plan:#a78bfa; --fail:#f87171;
   --sans:ui-sans-serif,system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
 }
-:root[data-theme="light"]{ --bg:#eef1f5; --panel:rgba(255,255,255,.86); --line:rgba(0,0,0,.10); --text:#161a20; --dim:#5b6573; --accent:#0a6cc4; }
+:root[data-theme="light"]{ color-scheme:light; --bg:#eef1f5; --panel:rgba(255,255,255,.86); --line:rgba(0,0,0,.10); --text:#161a20; --dim:#5b6573; --accent:#0a6cc4; }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.7 var(--sans);-webkit-text-size-adjust:100%}
@@ -200,3 +200,7 @@ input[type=range]{width:100%;accent-color:var(--accent);min-width:0}
 body.drag-over::after{content:"松开以载入 CSV";position:fixed;inset:12px;z-index:40;display:flex;align-items:center;justify-content:center;border:2px dashed var(--accent);border-radius:16px;background:rgba(14,16,19,.7);color:var(--text);font-size:18px;pointer-events:none}
 
 .mt0{margin-top:6px}
+
+/* 刘海屏：顶栏和字幕避开系统栏（页面用了 viewport-fit=cover） */
+.top{padding-top:calc(10px + env(safe-area-inset-top,0px))}
+@media (min-width:821px){.hud{bottom:calc(16px + env(safe-area-inset-bottom,0px))}}

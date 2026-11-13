@@ -53,12 +53,14 @@ index.html          项目主页（在页面里渲染 notes/ 下的笔记）
 story/              作品集滚动叙事页（WebGL2 渲染器、G1 姿态、指示灯、动作库、页面）
 assets/g1/          G1 两档网格（精修/首屏）与关节树（BSD-3-Clause）
 assets/duck/        Microduck 两档网格与关节树（网格 CC BY-NC-SA 非商业；关节树 Apache-2.0）
+assets/nova/        越疆 Nova 5 双臂两档网格与关节表（见 assets/nova/NOTICE.md）
 previz/index.html   运镜预演台
 studio/             Nova 拍摄 Studio（script.js 镜头脚本、app.js 页面、scripts/ 示例脚本）
 reel/               Studio 的时间轴与机械臂求解（reel.js、arm.js）；旧的 /reel/ 页面跳转到 Studio
 previz/kin.js       运动学、碰撞、检查、自动修正、云台分配
 notes/              笔记（Markdown，GitHub 上也能直接读）
 tests/              计算核心的回归测试
+tools/              网格精简、出片渲染（render_reel.py）、单文件打包（bundle_artifact.py）
 .github/workflows/  测试通过后自动发布到 GitHub Pages
 ```
 
@@ -70,6 +72,13 @@ tests/              计算核心的回归测试
 python3 -m http.server 8000
 # 打开 http://localhost:8000/
 node --test tests/kin.test.mjs   # 运行测试，需要 Node 18+
+```
+
+作品集和 Studio 也有单文件版（模型、动作、脚本全部内联，断网也能打开，Claude 里的 artifact 就是它）：
+
+```bash
+python3 tools/bundle_artifact.py story    # → dist/portfolio.html
+python3 tools/bundle_artifact.py studio   # → dist/nova-studio.html
 ```
 
 ## 局限
